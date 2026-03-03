@@ -14,7 +14,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use scyros::phases::{
-    download, duplicate_files, duplicate_ids, extract_benchmarks, filter_languages,
+    alt_parse, download, duplicate_files, duplicate_ids, extract_benchmarks, filter_languages,
     filter_metadata, forks, ids, languages, metadata, parse, pull_request,
 };
 use scyros::utils::error::*;
@@ -36,6 +36,7 @@ fn cli() -> Command {
         .subcommand(duplicate_files::cli())
         .subcommand(parse::cli())
         .subcommand(extract_benchmarks::cli())
+        .subcommand(alt_parse::cli())
         .arg(
             Arg::new("debug")
                 .long("debug")
@@ -210,6 +211,23 @@ fn main() {
                                     cli_subargs.get_one::<String>("names").unwrap(),
                                     cli_subargs.get_one::<String>("dest").unwrap(),
                                     cli_subargs.get_one::<usize>("sub").copied(),
+                                    &mut logger,
+                                )
+                            }
+                            else if subcommand == alt_parse::cli().get_name() {
+                                alt_parse::run(
+                                    cli_subargs.get_one::<String>("input").unwrap(),
+                                    cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
+                                    cli_subargs.get_one::<String>("logs").map(|x| x.as_str()),
+                                    cli_subargs
+                                        .get_many::<String>("lang")
+                                        .map(|v|
+                                        v.map(|s| s.as_str())
+                                        .collect::<Vec<&str>>()),
+                                    cli_subargs.get_one::<String>("failures").unwrap(),
+                                    *cli_subargs.get_one::<usize>("threads").unwrap(),
+                                    *cli_subargs.get_one::<u64>("seed").unwrap(),
+                                    cli_subargs.get_flag("force"),
                                     &mut logger,
                                 )
                             }

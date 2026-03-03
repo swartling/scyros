@@ -11,6 +11,14 @@ data/
 ### Scyros ###
 ghtokens.csv
 !tests/data
+outputs/
 
 *.zip
+// Negation pattern in .gitignore
+// The '!' prefix in .gitignore is used to negate a previous pattern.
+// It tells Git to NOT ignore files matching that pattern, even if they
+// would have been ignored by an earlier rule.
+// Example: If '*.tar.gz' ignores all .tar.gz files, then '!tests/data'
+// would un-ignore the 'tests/data' file/directory, ensuring it is tracked
+// by Git despite matching a previous ignore rule.
 *.tar.gz

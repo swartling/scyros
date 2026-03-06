@@ -81,6 +81,34 @@ impl Bow {
             .join("|")
             .into_bytes()
     }
+
+    /// Merges another Bag of Words into this one, summing the counts of shared tokens.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The other Bag of Words to be merged into this one.
+    pub fn merge(&mut self, other: Bow) {
+        for (token, count) in other.map {
+            *self.map.entry(token).or_insert(0) += count;
+        }
+    }
+
+    /// Generates a ranking of tokens based on their frequency in the Bag of Words.
+    /// The ranking is a HashMap where the key is the token and the value is a tuple containing the frequency and the rank (1-based index).
+    /// Returns a HashMap where the key is the token and the value is a tuple containing the frequency and the rank.
+    pub fn token_rankings(&self) -> HashMap<Vec<u8>, (usize, usize)> {
+        let mut rankings: HashMap<Vec<u8>, (usize, usize)> = HashMap::new();
+        let mut count_vec: Vec<(&Vec<u8>, &usize)> = self.map.iter().collect();
+        //count_vec.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count in descending order
+        count_vec.sort_by(|a, b| {
+            b.1.cmp(a.1) // primary: count descending
+                .then_with(|| a.0.cmp(b.0)) // secondary: token ascending
+        });
+        for (rank, (token, count)) in count_vec.into_iter().enumerate() {
+            rankings.insert(token.clone(), (*count, rank + 1));
+        }
+        rankings
+    }
 }
 
 #[cfg(test)]

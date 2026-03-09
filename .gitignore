@@ -13,6 +13,7 @@ data/
 ghtokens.csv
 !tests/data
 outputs/
+src/phases/alt_parse.rs //Got broken by refactoring but is not in use currently, so ignoring for now
 
 *.zip
 // Negation pattern in .gitignore

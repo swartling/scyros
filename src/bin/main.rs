@@ -15,7 +15,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgAction, Command};
 use scyros::phases::{
-    alt_parse, download, duplicate_files, duplicate_ids, extract_benchmarks, filter_languages,
+    download, duplicate_files, duplicate_ids, extract_benchmarks, filter_languages,
     filter_metadata, forks, ids, languages, metadata, parse, pull_request, tokenizer,
 };
 use scyros::utils::logger::Logger;
@@ -37,7 +37,6 @@ fn cli() -> Command {
         .subcommand(duplicate_files::cli())
         .subcommand(parse::cli())
         .subcommand(extract_benchmarks::cli())
-        .subcommand(alt_parse::cli())
         .subcommand(tokenizer::cli())
         .arg(
             Arg::new("debug")
@@ -216,7 +215,7 @@ fn main() {
                                     &logger,
                                 )
                             }
-                            else if subcommand == alt_parse::cli().get_name() {
+                            /* else if subcommand == alt_parse::cli().get_name() {
                                 alt_parse::run(
                                     cli_subargs.get_one::<String>("input").unwrap(),
                                     cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
@@ -232,14 +231,14 @@ fn main() {
                                     cli_subargs.get_flag("force"),
                                     &mut logger,
                                 )
-                            }
+                            } */
                             else if subcommand == tokenizer::cli().get_name() {
                                 tokenizer::run(
                                     cli_subargs.get_one::<String>("input").unwrap(),
                                     //cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
                                     //cli_subargs.get_one::<String>("language").unwrap(),
                                     cli_subargs.get_one::<String>("example_word").unwrap(),
-                                    &mut logger,
+                                    &logger,
                                 )
                             }
                             else {

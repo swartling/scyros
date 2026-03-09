@@ -3,17 +3,18 @@ use std::collections::HashMap;
 use std::f32::consts::E; */
 
 use crate::utils::bow::*;
-use crate::utils::error::*;
 use crate::utils::fs::*;
 use crate::utils::regex::*;
 use crate::utils::{/* csv::*,  */ logger::Logger};
+use anyhow::{/* anyhow, bail, Context,  */ Result};
+use tracing::info;
 /* use clang::token;
 use polars::frame::row; */
 use clap::{Arg, /* ArgAction, */ Command};
 use polars::prelude::*;
 
 /* struct Token {
-    word: String,
+    word: Vec<u8>,
     local_count: usize,
     global_count: usize,
     global_position: usize,
@@ -47,8 +48,8 @@ pub fn run(
     //output_path: &str,
     //language: &str,
     example_word: &str,
-    logger: &mut Logger,
-) -> Result<(), Error> {
+    _logger: &Logger, //not used currently but hopefully will later
+) -> Result<()> {
     //No checks for language yet. Just uses java for now. Will add more languages later.
     let language = "java";
     let minimum_loc = 5; //temporary
@@ -70,69 +71,61 @@ pub fn run(
     )?;
 
     let n_functions_before_language = input_file.height();
-    logger.log(&format!(
-        "  {} functions found in the input file, filtering by selected language",
+    info!(
+        "{} functions found in the input file, filtering by selected language",
         n_functions_before_language
-    ))?;
+    );
 
     //input_file = input_file.filter(&input_file.column("language")?.equal(language));
-    input_file = map_err(
-        input_file
-            .lazy()
-            .filter(col("language").eq(lit(language)))
-            .collect(),
-        "Error filtering language",
-    )?;
+    input_file = input_file
+        .lazy()
+        .filter(col("language").eq(lit(language)))
+        .collect()?;
 
     let n_functions_after_language = input_file.height();
-
-    logger.log(&format!(
-        "  {} functions found after filtering ({:.2} %)",
+    info!(
+        "  {} files found after filtering ({:.2} %)",
         n_functions_after_language,
         if n_functions_before_language == 0 {
             0
         } else {
             n_functions_after_language / n_functions_before_language * 100
         }
-    ))?;
-
+    );
     let n_functions_before_loc = input_file.height();
 
-    logger.log(&format!(
-        "{} functions found in the input file. Filtering those with less than {} lines of code.",
-        n_functions_before_loc, minimum_loc
-    ))?;
+    info!(" {} functions found after filtering by language, filtering functions with less that {} lines of code.", n_functions_before_loc, minimum_loc);
 
     //input_file = input_file.filter(&input_file.column("loc")?.greater_equal(minimum_loc))?;
 
-    input_file = map_err(
-        input_file
-            .lazy()
-            .filter(col("loc").gt_eq(lit(minimum_loc)))
-            .collect(),
-        "Error filtering by lines of code",
-    )?;
+    input_file = input_file
+        .lazy()
+        .filter(col("loc").gt_eq(lit(minimum_loc)))
+        .collect()?;
 
     let n_functions_after_loc = input_file.height();
 
-    logger.log(&format!(
-        "  {} functions found after filtering by lines of code ({:.2} %)", //something is weird with the percentage calculation here.
+    info!(
+        "{} functions found after filtering  ({:.2} %)", //something is weird with the percentage calculation here.
         n_functions_after_loc,
         if n_functions_before_loc == 0 {
             0
         } else {
             n_functions_after_loc / n_functions_before_loc * 100
         }
-    ))?;
-    let global_bow = global_counter(&input_file, logger)?;
+    );
+    let global_bow = global_counter(&input_file)?;
 
     let token_rankings = global_bow.token_rankings();
 
     let example_word = example_word.to_ascii_lowercase();
     let example_word_token = example_word.as_bytes();
 
-    logger.log("Tokenizer seems to have completed")?;
-    logger.log(&format!(
+    info!(
+        "Global Bag of Words generated. Checking for example word '{}'",
+        example_word
+    );
+    info!(
         "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
         example_word,
         token_rankings
@@ -143,12 +136,12 @@ pub fn run(
             .get(example_word_token)
             .map(|(_, rank)| *rank)
             .unwrap_or(0)
-    ))?;
+    );
 
     Ok(())
 }
 
-fn global_counter(input_file: &DataFrame, logger: &mut Logger) -> Result<Bow, Error> {
+fn global_counter(input_file: &DataFrame) -> Result<Bow> {
     let word_matcher: Matcher = Matcher::words_matcher();
     let mut global_bow: Bow = Bow::new();
 
@@ -168,15 +161,15 @@ fn global_counter(input_file: &DataFrame, logger: &mut Logger) -> Result<Bow, Er
                         global_bow.merge(local_bow);
                     }
                     Ok(Err(_e)) => {
-                        logger.log(&format!("  Warning: File to large at path {}", path))?;
+                        info!("  Warning: File to large at path {}", path);
                     }
                     Err(_e) => {
-                        logger.log(&format!("  Warning: Could not load file at path {}", path))?;
+                        info!("  Warning: Could not load file at path {}", path);
                     }
                 }
             }
             None => {
-                let _ = logger.log("  Warning: Path not found");
+                info!("  Warning: Path not found");
             }
         }
     }

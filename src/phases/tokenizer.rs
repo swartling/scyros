@@ -43,38 +43,6 @@ pub fn cli() -> Command {
 }
 
 pub fn run(input_path: &str, example_word: &str, logger: &Logger) -> Result<()> {
-    let token_rankings = run_tokenizer(input_path, logger)?;
-
-    let example_word = example_word.to_ascii_lowercase();
-    let example_word_token = example_word.as_bytes();
-
-    info!(
-        "Global Bag of Words generated. Checking for example word '{}'",
-        example_word
-    );
-    info!(
-        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
-        example_word,
-        token_rankings
-            .get(example_word_token)
-            .map(|(count, _)| *count)
-            .unwrap_or(0),
-        token_rankings
-            .get(example_word_token)
-            .map(|(_, rank)| *rank)
-            .unwrap_or(0)
-    );
-
-    Ok(())
-}
-
-pub fn run_tokenizer(
-    input_path: &str, //path to csv provided by parser
-    //output_path: &str,
-    //language: &str,
-    _logger: &Logger, //not used currently but hopefully will later
-) -> Result<HashMap<Vec<u8>, (usize, usize)>> {
-    //No checks for language yet. Just uses java for now. Will add more languages later.
     let language = "java";
     let minimum_loc = 5; //temporary
                          //let separators = vec!["(", ")", "[", "]", "{", "}", ";", ".", ",", ":", "=", "+", "-", "*", "/", "%", "<", ">", "&", "|", "!", "?", "~", "^", "#", "$", "@", "\"", "\\", "`", "'"]; //hardcoded separators for now. Will add more later and make it configurable.
@@ -138,7 +106,41 @@ pub fn run_tokenizer(
             n_functions_after_loc / n_functions_before_loc * 100
         }
     );
-    let global_bow = global_counter(&input_file)?;
+
+    let token_rankings = run_tokenizer(&input_file, logger)?;
+
+    let example_word = example_word.to_ascii_lowercase();
+    let example_word_token = example_word.as_bytes();
+
+    info!(
+        "Global Bag of Words generated. Checking for example word '{}'",
+        example_word
+    );
+    info!(
+        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
+        example_word,
+        token_rankings
+            .get(example_word_token)
+            .map(|(count, _)| *count)
+            .unwrap_or(0),
+        token_rankings
+            .get(example_word_token)
+            .map(|(_, rank)| *rank)
+            .unwrap_or(0)
+    );
+
+    Ok(())
+}
+
+pub fn run_tokenizer(
+    input_file: &DataFrame,
+    //output_path: &str,
+    //language: &str,
+    _logger: &Logger, //not used currently but hopefully will later
+) -> Result<HashMap<Vec<u8>, (usize, usize)>> {
+    //No checks for language yet. Just uses java for now. Will add more languages later.
+
+    let global_bow = global_counter(input_file)?;
 
     let token_rankings: std::collections::HashMap<Vec<u8>, (usize, usize)> =
         global_bow.token_rankings();

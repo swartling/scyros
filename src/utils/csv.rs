@@ -254,10 +254,10 @@ mod tests {
 
     #[test]
     fn new_test() -> Result<()> {
-        let before = std::fs::read_to_string("tests/data/small_file.csv").unwrap();
+        let before = std::fs::read_to_string("tests/data/small_file.csv")?;
         CSVFile::new("tests/data/small_file.csv", FileMode::Read)?;
         CSVFile::new("tests/data/small_file.csv", FileMode::Append)?;
-        let after = std::fs::read_to_string("tests/data/small_file.csv").unwrap();
+        let after = std::fs::read_to_string("tests/data/small_file.csv")?;
         assert_eq!(before, after);
         CSVFile::new("tests/data/empty.csv", FileMode::Overwrite)?;
         ensure!(CSVFile::new("tests/data/non_existent.csv", FileMode::Read).is_err());
@@ -269,15 +269,11 @@ mod tests {
 
     #[test]
     fn read_test() -> Result<()> {
-        CSVFile::new("tests/data/small_file.csv", FileMode::Read)
-            .unwrap()
-            .read()?;
-        ensure!(CSVFile::new("tests/data/small_file.csv", FileMode::Append)
-            .unwrap()
+        CSVFile::new("tests/data/small_file.csv", FileMode::Read)?.read()?;
+        ensure!(CSVFile::new("tests/data/small_file.csv", FileMode::Append)?
             .read()
             .is_err());
-        ensure!(CSVFile::new("tests/data/empty.csv", FileMode::Overwrite)
-            .unwrap()
+        ensure!(CSVFile::new("tests/data/empty.csv", FileMode::Overwrite)?
             .read()
             .is_err());
         Ok(())
@@ -298,7 +294,7 @@ mod tests {
 
     #[test]
     fn column_test() -> Result<()> {
-        let file = CSVFile::new("tests/data/small_file.csv", FileMode::Read).unwrap();
+        let file = CSVFile::new("tests/data/small_file.csv", FileMode::Read)?;
 
         let ids = file.column::<usize>(0)?;
         assert_eq!(ids, vec![0, 1, 2, 3]);
@@ -314,31 +310,71 @@ mod tests {
         let ids = file.column::<i32>(1);
         ensure!(ids.is_err());
 
-        let file = CSVFile::new("tests/data/invalid_csv.csv", FileMode::Read).unwrap();
+        let file = CSVFile::new("tests/data/invalid_csv.csv", FileMode::Read)?;
         ensure!(file.column::<i8>(0).is_err());
         Ok(())
     }
     #[test]
     fn indexed_lines_test() -> Result<()> {
-        let file = CSVFile::new("tests/data/small_file.csv", FileMode::Read).unwrap();
+        let file = CSVFile::new("tests/data/small_file.csv", FileMode::Read)?;
         let indexed_lines = file.indexed_lines::<i32>(0)?;
         assert_eq!(indexed_lines.len(), 4);
-        assert_eq!(indexed_lines.get(&0).unwrap(), "0,a,1");
-        assert_eq!(indexed_lines.get(&1).unwrap(), "1,b,0");
-        assert_eq!(indexed_lines.get(&2).unwrap(), "2,c,1");
-        assert_eq!(indexed_lines.get(&3).unwrap(), "3,d,0");
+        assert_eq!(
+            indexed_lines
+                .get(&0)
+                .with_context(|| "Could not find index 0")?,
+            "0,a,1"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&1)
+                .with_context(|| "Could not find index 1")?,
+            "1,b,0"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&2)
+                .with_context(|| "Could not find index 2")?,
+            "2,c,1"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&3)
+                .with_context(|| "Could not find index 3")?,
+            "3,d,0"
+        );
 
         let indexed_lines = file.indexed_lines::<String>(1)?;
         assert_eq!(indexed_lines.len(), 4);
-        assert_eq!(indexed_lines.get(&"a".to_string()).unwrap(), "0,a,1");
-        assert_eq!(indexed_lines.get(&"b".to_string()).unwrap(), "1,b,0");
-        assert_eq!(indexed_lines.get(&"c".to_string()).unwrap(), "2,c,1");
-        assert_eq!(indexed_lines.get(&"d".to_string()).unwrap(), "3,d,0");
+        assert_eq!(
+            indexed_lines
+                .get(&"a".to_string())
+                .with_context(|| "Could not find index 'a'")?,
+            "0,a,1"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&"b".to_string())
+                .with_context(|| "Could not find index 'b'")?,
+            "1,b,0"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&"c".to_string())
+                .with_context(|| "Could not find index 'c'")?,
+            "2,c,1"
+        );
+        assert_eq!(
+            indexed_lines
+                .get(&"d".to_string())
+                .with_context(|| "Could not find index 'd'")?,
+            "3,d,0"
+        );
 
         ensure!(file.indexed_lines::<bool>(3).is_err());
         ensure!(file.indexed_lines::<u64>(1).is_err());
 
-        let empty = CSVFile::new("tests/data/empty.csv", FileMode::Read).unwrap();
+        let empty = CSVFile::new("tests/data/empty.csv", FileMode::Read)?;
 
         let indexed_lines = empty.indexed_lines::<IpAddr>(0)?;
         assert_eq!(indexed_lines.len(), 0);

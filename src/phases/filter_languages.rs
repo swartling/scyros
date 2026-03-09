@@ -16,15 +16,15 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::vec;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, Command};
 use polars::frame::DataFrame;
 use polars::prelude::{col, lit, DataType, Field, IdxCa, IntoLazy, Schema};
 use tracing::info;
 
-use crate::utils::fs::*;
 use crate::utils::logger::{log_output_file, log_write_output, Logger};
 use crate::utils::regex::KeywordFiles;
+use crate::utils::{dataframes, fs::*};
 
 /// Command line arguments parsing.
 pub fn cli() -> Command {
@@ -155,65 +155,50 @@ pub fn run(
         reachable_projects_count, reachable_projects_percentage
     );
 
-    let languages_maps: Vec<(usize, Option<HashMap<String, String>>)> = projects
-        .column("languages")
-        .and_then(|c| c.str())?
-        .iter()
-        .map(|opt| match opt {
-            Some(s) => Some(parse_map(s)),
-            None => Some(HashMap::new()),
+    let languages_maps: Vec<(usize, HashMap<&str, &str>)> =
+        dataframes::str(&projects, "languages")?
+            .into_iter()
+            .map(parse_map)
+            .enumerate()
+            .collect();
+
+    let languages_mask = languages_maps
+        .into_iter()
+        .filter_map(|(idx, m)| {
+            Some(Some(idx as u32))
+                .filter(|_| m.keys().any(|k| languages.contains(&k.to_lowercase())))
         })
-        .enumerate()
-        .collect();
+        .collect::<IdxCa>();
 
-    match languages_maps.iter().find(|(_, opt)| opt.is_none()) {
-        Some((idx, _)) => {
-            bail!("Could not parse languages in line {}", idx + 2)
-        }
-        None => {
-            // Safe unwrap
-            let languages_mask = languages_maps
-                .into_iter()
-                .filter_map(|(idx, m)| {
-                    Some(Some(idx as u32)).filter(|_| {
-                        m.unwrap()
-                            .keys()
-                            .any(|k| languages.contains(&k.to_lowercase()))
-                    })
-                })
-                .collect::<IdxCa>();
+    projects = projects
+        .take(&languages_mask)
+        .with_context(|| "Could not filter projects according to languages")?;
 
-            projects = projects
-                .take(&languages_mask)
-                .with_context(|| "Could not filter projects according to languages")?;
+    let retained_projects_count = projects.height();
+    let retained_projects_percentage =
+        (retained_projects_count as f64 / reachable_projects_count as f64) * 100.0;
 
-            let retained_projects_count = projects.height();
-            let retained_projects_percentage =
-                (retained_projects_count as f64 / reachable_projects_count as f64) * 100.0;
+    info!(
+        "\n{} projects ({:.2}%) do not contain any code written in a programming language in {}",
+        reachable_projects_count - retained_projects_count,
+        100.0 - retained_projects_percentage,
+        languages_path
+    );
+    info!(
+        "{} remaining projects ({:.2}%)\n",
+        retained_projects_count, retained_projects_percentage
+    );
 
-            info!(
-                "\n{} projects ({:.2}%) do not contain any code written in a programming language in {}",
-                reachable_projects_count - retained_projects_count,
-                100.0 - retained_projects_percentage,
-                languages_path
-            );
-            info!(
-                "{} remaining projects ({:.2}%)\n",
-                retained_projects_count, retained_projects_percentage
-            );
-
-            // Writes the result to the output CSV file
-            log_write_output(logger, output_path, &mut projects, no_output)
-        }
-    }
+    // Writes the result to the output CSV file
+    log_write_output(logger, output_path, &mut projects, no_output)
 }
 
-fn parse_map(map: &str) -> HashMap<String, String> {
+fn parse_map(map: &str) -> HashMap<&str, &str> {
     map.split(';')
         .filter_map(|pair| {
             let mut parts = pair.splitn(2, ':');
             match (parts.next(), parts.next()) {
-                (Some(k), Some(v)) => Some((k.to_string(), v.to_string())),
+                (Some(k), Some(v)) => Some((k, v)),
                 _ => None,
             }
         })
@@ -231,14 +216,11 @@ mod tests {
     #[test]
     fn test_parse_map() -> Result<()> {
         let input = "key1:value1;key2:value2;key3:value3";
-        let expected: HashMap<String, String> = [
-            ("key1".to_string(), "value1".to_string()),
-            ("key2".to_string(), "value2".to_string()),
-            ("key3".to_string(), "value3".to_string()),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        let expected: HashMap<&str, &str> =
+            [("key1", "value1"), ("key2", "value2"), ("key3", "value3")]
+                .iter()
+                .cloned()
+                .collect();
         let result = parse_map(input);
         ensure!(
             result == expected,
@@ -249,7 +231,7 @@ mod tests {
     #[test]
     fn test_parse_empty_map() -> Result<()> {
         let input = "";
-        let expected: HashMap<String, String> = HashMap::new();
+        let expected: HashMap<&str, &str> = HashMap::new();
         let result = parse_map(input);
         ensure!(
             result == expected,

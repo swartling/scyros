@@ -50,6 +50,24 @@ pub fn u32(df: &DataFrame, column: &str) -> Result<Vec<u32>> {
     })?;
     Ok(u32_col.into_no_null_iter().collect())
 }
+/// Extracts a column of strings from a DataFrame and returns it as a vector.
+///
+/// # Arguments
+/// * `df` - The DataFrame containing the column.
+/// * `column` - The name of the column to extract.
+///
+/// # Returns
+/// A vector containing the values of the column, or an error if the column does not exist, cannot be converted to strings, or contains null values.
+pub fn str<'a>(df: &'a DataFrame, column: &str) -> Result<Vec<&'a str>> {
+    let str_col = df
+        .column(column)?
+        .str()
+        .with_context(|| format!("Could not convert column {} to strings", column))?;
+    Ok(str_col
+        .into_iter()
+        .map(|opt| opt.unwrap_or_default())
+        .collect())
+}
 
 /// Checks if a DataFrame contains a column with a given name.
 ///

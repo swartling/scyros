@@ -567,7 +567,6 @@ impl Workspace {
                 .with_context(|| format!("Error exploring entity {}", key))?;
         }
         // Topological sort of the dependency graph
-        // Safe unwrap
         let mut sorted_idx = toposort(&self.dependencies, None)
             .map_err(|_| anyhow!("Cycle detected in dependency graph"))?;
         sorted_idx.reverse();
@@ -687,13 +686,10 @@ pub fn run(
         )
     })?;
 
-    let id_to_projects: HashMap<u32, String> = {
+    let id_to_projects: HashMap<u32, &str> = {
         let ids = dataframes::u32(&projects_df, "id")?;
-        let paths = projects_df.column("path")?.str()?;
-        ids.into_iter()
-            .zip(paths)
-            .filter_map(|(id, path_opt)| path_opt.map(|path| (id, path.to_string())))
-            .collect()
+        let paths = dataframes::str(&projects_df, "path")?;
+        ids.into_iter().zip(paths).collect()
     };
 
     let input_file: DataFrame = logger.run_task("Loading input file for extra", || {
@@ -719,8 +715,8 @@ pub fn run(
         Ok(())
     })?;
 
-    let path_prefix_stripper = Regex::new(r"^.*?[0-9]+-[0-9a-fA-F]{40}/").unwrap();
-    let path_suffix_stripper = Regex::new(r"\.functions/\d+$").unwrap();
+    let path_prefix_stripper = Regex::new(r"^.*?[0-9]+-[0-9a-fA-F]{40}/")?;
+    let path_suffix_stripper = Regex::new(r"\.functions/\d+$")?;
 
     let shuffled_rows = shuffled_idx.into_iter().map(|idx| {
         let row = input_file.get_row(idx).unwrap().0;
@@ -759,7 +755,7 @@ pub fn run(
     } else {
         logger.run_task("Resuming progress (parsing)", || {
             if PathBuf::from(&output_path).exists() {
-                let output_df = open_csv(
+                let output_df: DataFrame = open_csv(
                     output_path,
                     Some(Schema::from_iter(vec![
                         Field::new("file".into(), DataType::String),
@@ -767,23 +763,13 @@ pub fn run(
                     ])),
                     Some(vec!["file", "function"]),
                 )?;
-                let columns = output_df.columns(["file", "function"])?;
-                let file_col = columns
-                    .first()
-                    .with_context(|| "Could not get the file column")?
-                    .str()?
-                    .iter()
-                    .map(|x| x.unwrap());
-                let function_col = columns
-                    .get(1)
-                    .with_context(|| "Could not get the function column")?
-                    .str()?
-                    .iter()
-                    .map(|x| x.unwrap());
+                let file_col: Vec<&str> = dataframes::str(&output_df, "file")?;
+                let function_col: Vec<&str> = dataframes::str(&output_df, "function")?;
                 Ok(file_col
+                    .into_iter()
                     .zip(function_col)
                     .map(|(f, func)| (f.to_string(), func.to_string()))
-                    .collect::<HashSet<_>>())
+                    .collect::<HashSet<(String, String)>>())
             } else {
                 Ok(HashSet::new())
             }
@@ -801,9 +787,7 @@ pub fn run(
     progress_bar.enable_steady_tick(Duration::from_millis(100));
 
     progress_bar.set_style(
-        indicatif::ProgressStyle::default_bar()
-            .template("{elapsed} {wide_bar} {percent}%")
-            .unwrap(),
+        indicatif::ProgressStyle::default_bar().template("{elapsed} {wide_bar} {percent}%")?,
     );
 
     progress_bar.set_length(n_fun as u64);
@@ -814,7 +798,7 @@ pub fn run(
                 let proj_path = id_to_projects
                     .get(&id)
                     .with_context(|| format!("Could not get project path for id {}", id))?;
-                if proj_path == "error" {
+                if *proj_path == "error" {
                     let csv_row = format!("{},{},{},{}", id, rel_path, function, "error");
                     writeln!(&mut output_file, "{}", csv_row)?;
                 } else {
@@ -989,10 +973,11 @@ mod tests {
         fn workspace_discover_candidates_test() -> Result<()> {
             let key = {
                 let path = format!("{}/stack_project/stack.c", TEST_DATA);
-                let clang: Clang = Clang::new().unwrap();
+                let clang: Clang =
+                    Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
 
-                let tu: TranslationUnit = index.parser(&path).parse().unwrap();
+                let tu: TranslationUnit = index.parser(&path).parse()?;
                 let entity: Entity<'_> = tu.get_entity().get_children()[0];
                 EntityKey::from_entity(&entity)
             };
@@ -1072,10 +1057,11 @@ mod tests {
         fn workspace_add_node_test() -> Result<()> {
             let key = {
                 let path = format!("{}/stack_project/stack.c", TEST_DATA);
-                let clang: Clang = Clang::new().unwrap();
+                let clang: Clang =
+                    Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
 
-                let tu: TranslationUnit = index.parser(&path).parse().unwrap();
+                let tu: TranslationUnit = index.parser(&path).parse()?;
                 let entity: Entity<'_> = tu.get_entity().get_children()[0];
                 EntityKey::from_entity(&entity)
             };
@@ -1099,10 +1085,11 @@ mod tests {
         fn workspace_add_edge_test() -> Result<()> {
             let keys = {
                 let path = format!("{}/stack_project/stack.c", TEST_DATA);
-                let clang: Clang = Clang::new().unwrap();
+                let clang: Clang =
+                    Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
 
-                let tu: TranslationUnit = index.parser(&path).parse().unwrap();
+                let tu: TranslationUnit = index.parser(&path).parse()?;
                 let entity: Entity<'_> = tu.get_entity().get_children()[0];
                 let key1 = EntityKey::from_entity(&entity);
                 let entity2: Entity<'_> = tu.get_entity().get_children()[1];
@@ -1156,7 +1143,9 @@ mod tests {
             assert_eq!(ws.decl, decl_before);
             assert_eq!(explored == HashSet::from([key.clone()]), true);
 
-            let ignore1 = to_explore.pop_front().unwrap();
+            let ignore1 = to_explore
+                .pop_front()
+                .with_context(|| "To explore is empty")?;
 
             ws.explore_entity(&ignore1, &mut explored, &mut to_explore)?;
             assert_eq!(ws.root_function_name, EXT_MAIN);
@@ -1182,9 +1171,9 @@ mod tests {
 
         fn workspace_emit_code_simple_test() -> Result<()> {
             let mut ws = simple_workspace()?;
-            let dependencies = ws.resolve_dependencies().unwrap();
+            let dependencies = ws.resolve_dependencies()?;
             let code = ws.emit_code(&dependencies)?;
-            let expected = std::fs::read(format!("{}/simple_expected.c", TEST_DATA)).unwrap();
+            let expected = std::fs::read(format!("{}/simple_expected.c", TEST_DATA))?;
             assert_eq!(code.trim_ascii(), expected);
             Ok(())
         }

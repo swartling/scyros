@@ -1344,6 +1344,7 @@ mod tests {
 
     use polars::prelude::SortMultipleOptions;
 
+    use crate::utils::dataframes;
     use crate::utils::dataframes::*;
     use crate::utils::fs::*;
     use crate::utils::logger::test_logger;
@@ -1363,7 +1364,7 @@ mod tests {
             has_column(&input_df, "name"),
             "Input dataframe must have a 'name' column"
         );
-        let input_df = input_df.column("name")?.str()?;
+        let input_df: Vec<&str> = dataframes::str(&input_df, "name")?;
 
         let output_file_path = format!("{}.functions.csv", input_file_path);
         delete_file(&output_file_path, true)?;
@@ -1371,11 +1372,8 @@ mod tests {
         let logs_file_path = format!("{}.function_logs.csv", input_file_path);
         delete_file(&logs_file_path, true)?;
 
-        for path in input_df {
-            delete_dir(
-                &format!("{}.functions", path.with_context(|| "Failed to get path")?),
-                true,
-            )?;
+        for path in input_df.iter() {
+            delete_dir(&format!("{}.functions", path), true)?;
         }
 
         if should_pass {
@@ -1431,8 +1429,8 @@ mod tests {
 
             assert_eq!(sorted_expected_df, sorted_output_df);
 
-            for path in sorted_output_df.column("path")?.str()? {
-                let path = Path::new(path.with_context(|| "Failed to get path")?);
+            for path in dataframes::str(&sorted_output_df, "path")? {
+                let path = Path::new(path);
                 ensure!(path.exists(), "Parsed file not found: {}", path.display());
                 let expected_path_name = format!(
                     "{}.expected/{}",
@@ -1471,7 +1469,7 @@ mod tests {
         delete_file(&logs_file_path, true)?;
 
         for path in input_df {
-            delete_dir(&format!("{}.functions", path.unwrap()), true)?;
+            delete_dir(&format!("{}.functions", path), true)?;
         }
         Ok(())
     }

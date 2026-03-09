@@ -300,8 +300,7 @@ pub fn run(
 
     progress_bar.set_style(
         indicatif::ProgressStyle::default_bar()
-            .template("{elapsed} {wide_bar} {percent}% | Requests from cache: {msg}")
-            .unwrap(),
+            .template("{elapsed} {wide_bar} {percent}% | Requests from cache: {msg}")?,
     );
 
     if sub.is_some() {

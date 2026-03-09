@@ -311,7 +311,7 @@ impl KeywordFiles {
                 .get("name")
                 .with_context(|| format!("Keyword file {} contains a language with no name", path))?
                 .as_str()
-                .ok_or_else(|| anyhow!("Language name is not a string"))?;
+                .with_context(|| anyhow!("Language name is not a string"))?;
 
             let extensions: HashSet<String> = match language.get("extensions") {
                 Some(ext) => json_to_set(ext),

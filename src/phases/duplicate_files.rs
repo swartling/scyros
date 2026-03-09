@@ -170,53 +170,39 @@ pub fn run(
             let my_tx = tx.clone();
             s.spawn(move |_| {
                 let word_matcher: Matcher = Matcher::words_matcher();
-                for el in chunk
-                    .column(input_header)
-                    .and_then(|c| c.str())
-                    .unwrap()
+                for (name, idx) in dataframes::str(&chunk, input_header)?
                     .into_iter()
-                    .zip(dataframes::u32(&chunk, "idx").unwrap().into_iter())
+                    .zip(dataframes::u32(&chunk, "idx")?.into_iter())
                 {
-                    match el {
-                        (Some(name), idx) => {
-                            // Revert the temporary replacements of special characters.
-                            let clean_name: String = name
-                                .replace("-was_comma-", ",")
-                                .replace("-was_quote-", "\"");
-                            match load_file(&clean_name, 1024 * 1024 * 1024) {
-                                Ok(Ok(file_content)) => {
-                                    let hash = if similarity == "exact" {
-                                        blake3::hash(&file_content)
-                                    } else {
-                                        blake3::hash(
-                                            &word_matcher.bag_of_words(&file_content).serialize(),
-                                        )
-                                    };
-                                    let _ =
-                                        my_tx.send(Some(Ok((idx, name.to_string(), Some(hash)))));
-                                }
-                                Ok(Err(_)) => {
-                                    let _ = my_tx.send(Some(Ok((idx, name.to_string(), None))));
-                                }
-                                Err(e) => {
-                                    let _ = my_tx.send(Some(Err(e)));
-                                }
-                            }
+                    // Revert the temporary replacements of special characters.
+                    let clean_name: String = name
+                        .replace("-was_comma-", ",")
+                        .replace("-was_quote-", "\"");
+                    match load_file(&clean_name, 1024 * 1024 * 1024) {
+                        Ok(Ok(file_content)) => {
+                            let hash = if similarity == "exact" {
+                                blake3::hash(&file_content)
+                            } else {
+                                blake3::hash(&word_matcher.bag_of_words(&file_content).serialize())
+                            };
+                            let _ = my_tx.send(Some(Ok((idx, name.to_owned(), Some(hash)))));
                         }
-                        _ => {
-                            let _ = my_tx.send(Some(Err(anyhow!("Could not parse row"))));
+                        Ok(Err(_)) => {
+                            let _ = my_tx.send(Some(Ok((idx, name.to_owned(), None))));
+                        }
+                        Err(e) => {
+                            let _ = my_tx.send(Some(Err(e)));
                         }
                     }
                 }
-                my_tx.send(None)
+                my_tx.send(None)?;
+                anyhow::Ok(())
             });
         }
 
         let progress = ProgressBar::new(file_count as u64);
         progress.set_style(
-            indicatif::ProgressStyle::default_bar()
-                .template("{elapsed} {wide_bar} {percent}%")
-                .unwrap(),
+            indicatif::ProgressStyle::default_bar().template("{elapsed} {wide_bar} {percent}%")?,
         );
 
         let mut hash_map: HashMap<Hash, (u32, String, u32)> = std::collections::HashMap::new();
@@ -314,15 +300,13 @@ pub fn run(
 
         log_write_output(logger, map_path, &mut map_df, false)?;
 
-        let mut output_df = files
-            .join(
-                &clusters,
-                ["name"],
-                ["name"],
-                polars::prelude::JoinType::Inner.into(),
-                None,
-            )
-            .unwrap();
+        let mut output_df = files.join(
+            &clusters,
+            ["name"],
+            ["name"],
+            polars::prelude::JoinType::Inner.into(),
+            None,
+        )?;
 
         log_write_output(logger, output_path, &mut output_df, false)
     })
@@ -362,12 +346,8 @@ mod tests {
 
         let output_df = open_csv(&default_output_path, None, None)?;
 
-        let sorted_expected_df = expected_df
-            .sort(vec!["name"], SortMultipleOptions::new())
-            .unwrap();
-        let sorted_output_df = output_df
-            .sort(vec!["name"], SortMultipleOptions::new())
-            .unwrap();
+        let sorted_expected_df = expected_df.sort(vec!["name"], SortMultipleOptions::new())?;
+        let sorted_output_df = output_df.sort(vec!["name"], SortMultipleOptions::new())?;
         assert_eq!(sorted_expected_df, sorted_output_df);
 
         delete_file(&default_output_path, false)?;
@@ -376,12 +356,8 @@ mod tests {
 
         let map_df = open_csv(&default_map_path, None, None)?;
 
-        let sorted_expected_map = expected_map
-            .sort(vec!["name"], SortMultipleOptions::new())
-            .unwrap();
-        let sorted_map_df = map_df
-            .sort(vec!["name"], SortMultipleOptions::new())
-            .unwrap();
+        let sorted_expected_map = expected_map.sort(vec!["name"], SortMultipleOptions::new())?;
+        let sorted_map_df = map_df.sort(vec!["name"], SortMultipleOptions::new())?;
         ensure!(
             sorted_expected_map.equals(&sorted_map_df),
             "Duplicate map CSV file does not match expected output."

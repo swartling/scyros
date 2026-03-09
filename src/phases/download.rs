@@ -422,7 +422,7 @@ pub fn run(
                 loop {
                     // Lock the repository iterator and retrieve the next item.
                     let next_item = {
-                        let mut iter_guard = iter.lock().unwrap();
+                        let mut iter_guard = iter.lock().expect("Mutex poisoned");
                         iter_guard.next()
                     };
 
@@ -481,6 +481,7 @@ pub fn run(
                         }
                     }
                 }
+                anyhow::Ok(())
             });
         }
 
@@ -488,9 +489,7 @@ pub fn run(
 
         let progress = ProgressBar::new(n_proj as u64);
         progress.set_style(
-            indicatif::ProgressStyle::default_bar()
-                .template("{elapsed} {wide_bar} {percent}%")
-                .unwrap(),
+            indicatif::ProgressStyle::default_bar().template("{elapsed} {wide_bar} {percent}%")?,
         );
         progress.inc(previous_results.len() as u64);
 
@@ -946,14 +945,11 @@ mod tests {
         )?;
 
         assert_eq!(
-            CSVFile::new(&output_file_project, FileMode::Read)
-                .unwrap()
-                .indexed_lines::<String>(0)?,
+            CSVFile::new(&output_file_project, FileMode::Read)?.indexed_lines::<String>(0)?,
             CSVFile::new(
                 &format!("{}/{}.project_log.csv.expected", TEST_DATA, input),
                 FileMode::Read
-            )
-            .unwrap()
+            )?
             .indexed_lines(0)?
         );
 

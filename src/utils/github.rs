@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::utils::dataframes;
+
 use super::fs::*;
 use super::json::*;
 use anyhow::{bail, Context, Error, Result};
@@ -42,12 +44,8 @@ pub fn is_valid_token_file(file_path: &str) -> Result<()> {
         bail!("Token file is empty");
     } else {
         // Safe unwrap
-        for (i, token) in token_file
-            .column("token")
-            .unwrap()
-            .str()
-            .unwrap()
-            .iter()
+        for (i, token) in dataframes::str(&token_file, "token")?
+            .into_iter()
             .enumerate()
         {
             let mut headers: CurlList = CurlList::new();
@@ -56,14 +54,12 @@ pub fn is_valid_token_file(file_path: &str) -> Result<()> {
 
             easy.url("https://api.github.com").and_then(|_| {
                 easy.get(true)
-                    .and_then(|_| {
-                        headers.append(&format!("Authorization: token {}", token.unwrap()))
-                    })
+                    .and_then(|_| headers.append(&format!("Authorization: token {}", token)))
                     .and_then(|_| headers.append("User-Agent: Rust-curl"))
                     .and_then(|_| easy.http_headers(headers))
             })?;
 
-            if easy.perform().is_err() || easy.response_code().unwrap() != 200 {
+            if easy.perform().is_err() || easy.response_code()? != 200 {
                 bail!("Token in line {} is invalid", i + 2);
             }
         }
@@ -128,7 +124,11 @@ mod tests {
     fn valid_tokens() -> Result<()> {
         let token_path = Path::new("ghtokens.csv");
         ensure!(token_path.exists(), "Token file does not exist");
-        is_valid_token_file(token_path.to_str().unwrap())
+        is_valid_token_file(
+            token_path
+                .to_str()
+                .with_context(|| "Path is not valid unicode")?,
+        )
     }
 
     #[test]

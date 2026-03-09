@@ -6,13 +6,13 @@ use crate::utils::bow::*;
 use crate::utils::fs::*;
 use crate::utils::regex::*;
 use crate::utils::{/* csv::*,  */ logger::Logger};
-use anyhow::{/* anyhow, bail, Context,  */ Result};
+use anyhow::{anyhow, /*bail, Context,  */ Result};
 use tracing::info;
 /* use clang::token;
 use polars::frame::row; */
 use clap::{Arg, /* ArgAction, */ Command};
 use polars::prelude::*;
-
+use std::collections::HashMap;
 /* struct Token {
     word: Vec<u8>,
     local_count: usize,
@@ -38,18 +38,42 @@ pub fn cli() -> Command {
                 .long("example-word")
                 .value_name("EXAMPLE_WORD")
                 .help("An example word to check the global Bag of Words for.")
-                .required(false)
-                .default_value("if"),
+                .required(false),
         )
 }
 
-pub fn run(
+pub fn run(input_path: &str, example_word: &str, logger: &Logger) -> Result<()> {
+    let token_rankings = run_tokenizer(input_path, logger)?;
+
+    let example_word = example_word.to_ascii_lowercase();
+    let example_word_token = example_word.as_bytes();
+
+    info!(
+        "Global Bag of Words generated. Checking for example word '{}'",
+        example_word
+    );
+    info!(
+        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
+        example_word,
+        token_rankings
+            .get(example_word_token)
+            .map(|(count, _)| *count)
+            .unwrap_or(0),
+        token_rankings
+            .get(example_word_token)
+            .map(|(_, rank)| *rank)
+            .unwrap_or(0)
+    );
+
+    Ok(())
+}
+
+pub fn run_tokenizer(
     input_path: &str, //path to csv provided by parser
     //output_path: &str,
     //language: &str,
-    example_word: &str,
     _logger: &Logger, //not used currently but hopefully will later
-) -> Result<()> {
+) -> Result<HashMap<Vec<u8>, (usize, usize)>> {
     //No checks for language yet. Just uses java for now. Will add more languages later.
     let language = "java";
     let minimum_loc = 5; //temporary
@@ -116,29 +140,10 @@ pub fn run(
     );
     let global_bow = global_counter(&input_file)?;
 
-    let token_rankings = global_bow.token_rankings();
+    let token_rankings: std::collections::HashMap<Vec<u8>, (usize, usize)> =
+        global_bow.token_rankings();
 
-    let example_word = example_word.to_ascii_lowercase();
-    let example_word_token = example_word.as_bytes();
-
-    info!(
-        "Global Bag of Words generated. Checking for example word '{}'",
-        example_word
-    );
-    info!(
-        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
-        example_word,
-        token_rankings
-            .get(example_word_token)
-            .map(|(count, _)| *count)
-            .unwrap_or(0),
-        token_rankings
-            .get(example_word_token)
-            .map(|(_, rank)| *rank)
-            .unwrap_or(0)
-    );
-
-    Ok(())
+    Some(token_rankings).ok_or_else(|| anyhow!("No tokens found in the global Bag of Words."))
 }
 
 fn global_counter(input_file: &DataFrame) -> Result<Bow> {

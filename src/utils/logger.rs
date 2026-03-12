@@ -233,10 +233,7 @@ pub fn log_output_file(output_path: &str, no_output: bool, force: bool) -> Resul
                     warn!("Overriding existing file: {}", output_path);
                     Ok(())
                 } else {
-                    bail!(
-                        "File {} already exists. Use --force to override it.",
-                        output_path
-                    )
+                    bail!("File {output_path} already exists. Use --force to override it.")
                 }
             }
             Err(_) => {
@@ -264,7 +261,7 @@ pub fn log_write_output(
     no_output: bool,
 ) -> Result<()> {
     if !no_output {
-        logger.run_task(format!("Writing to {}", output_path), || {
+        logger.run_task(format!("Writing to {output_path}"), || {
             write_csv(output_path, data)
         })
     } else {

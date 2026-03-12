@@ -312,7 +312,7 @@ pub fn run(
                         request_from_cache += 1;
                         cache.get(&id).unwrap().clone()
                     } else {
-                        match gh.request(&format!("https://api.github.com/repos/{}", full_name)) {
+                        match gh.request(&format!("https://api.github.com/repos/{full_name}")) {
                             Ok(json) => { ProjectMetadata::parse_json(&json, ())? }
                                 .to_csv((id, full_name.to_string())),
                             Err(e) => ProjectMetadata::default()
@@ -320,7 +320,7 @@ pub fn run(
                         }
                     };
 
-                    writeln!(&mut output_file, "{}", csv_row)?;
+                    writeln!(&mut output_file, "{csv_row}")?;
 
                     progress_bar.inc(1);
                     progress_bar.set_message(request_from_cache.to_string());
@@ -328,7 +328,7 @@ pub fn run(
                 }
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx)
+                bail!("Could not parse row {idx} in the input file")
             }
         }
     }
@@ -505,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_language_scraper() -> Result<()> {
-        let input_file: String = format!("{}/repos.csv", TEST_DATA);
-        let output_file: String = format!("{}.metadata.csv", input_file);
+        let input_file: String = format!("{TEST_DATA}/repos.csv");
+        let output_file: String = format!("{input_file}.metadata.csv");
         ensure!(
             std::path::Path::new(&input_file).exists(),
             "Input file does not exist"
@@ -535,7 +535,7 @@ mod tests {
         );
         let sorted_output_df = output_df.sort(vec!["name"], SortMultipleOptions::new())?;
 
-        let expected_df = open_csv(&format!("{}.expected", output_file), None, None)?;
+        let expected_df = open_csv(&format!("{output_file}.expected"), None, None)?;
         ensure!(
             has_column(&expected_df, "name"),
             "Expected output does not have 'name' column"

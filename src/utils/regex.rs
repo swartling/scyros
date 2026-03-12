@@ -78,7 +78,7 @@ impl Matcher {
             .join("|");
         if !joined_keywords.is_empty() {
             let new_pattern: String = if whole_words {
-                format!(r"\b(?:{})\b", joined_keywords)
+                format!(r"\b(?:{joined_keywords})\b")
             } else {
                 joined_keywords
             };
@@ -86,7 +86,7 @@ impl Matcher {
             let new_pattern_with_sensitivity: String = if case_sensitive {
                 new_pattern
             } else {
-                format!("(?i){}", new_pattern)
+                format!("(?i){new_pattern}")
             };
             Ok(Self {
                 regex: Some(Regex::new(&new_pattern_with_sensitivity)?),
@@ -163,7 +163,7 @@ impl Matcher {
     pub fn count_matches_in_file(&self, path: &str) -> Result<usize> {
         let mut count: usize = 0;
         for l in BufReader::new(open_file(path, FileMode::Read)?).lines() {
-            let line = l.with_context(|| format!("Could not read lines from {}", path))?;
+            let line = l.with_context(|| format!("Could not read lines from {path}"))?;
             count += self.count_matches_in_text(line.as_bytes());
         }
         Ok(count)
@@ -302,7 +302,7 @@ impl KeywordFiles {
         let cat1 = "languages";
         let languages = categories
             .get(cat1)
-            .with_context(|| format!("Keyword file {} does not contain a {} field", path, cat1))?;
+            .with_context(|| format!("Keyword file {path} does not contain a {cat1} field"))?;
 
         for l in languages.members() {
             let (name, extensions, keywords) = if l.is_string() {
@@ -318,7 +318,7 @@ impl KeywordFiles {
                 let name: &str = language
                     .get("name")
                     .with_context(|| {
-                        format!("Keyword file {} contains a language with no name", path)
+                        format!("Keyword file {path} contains a language with no name")
                     })?
                     .as_str()
                     .with_context(|| anyhow!("Language name is not a string"))?;

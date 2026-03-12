@@ -109,7 +109,7 @@ impl FindCommand {
     /// * `ext` - The extension of the files to search for.
     pub fn file_extension(mut self, ext: &str) -> Self {
         self.command.arg("-name");
-        self.command.arg(format!("*.{}", ext));
+        self.command.arg(format!("*.{ext}"));
         self
     }
 

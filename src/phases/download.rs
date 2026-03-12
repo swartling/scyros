@@ -247,12 +247,12 @@ pub fn run(
 
         // Create subsubdirectories to avoid reaching the limit of 32k subdirectories on some filesystems.
         for i in 0..(n_proj / MAX_SUBDIRS + 1) {
-            create_dir(format!("{}/{}", target, i))?;
+            create_dir(format!("{target}/{i}"))?;
         }
     }
 
     // Open the log file for the projects or create it if it does not exist.
-    let default_project_log_path = format!("{}.project_log.csv", input_file_path);
+    let default_project_log_path = format!("{input_file_path}.project_log.csv");
     let project_log_path: &str = projects_output_path.unwrap_or(&default_project_log_path);
 
     // Load previous results if the skip flag is not set.
@@ -281,19 +281,19 @@ pub fn run(
     let files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("files_with_{}", p))
+        .map(|p| format!("files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let loc_of_files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("loc_of_files_with_{}", p))
+        .map(|p| format!("loc_of_files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let words_of_files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("words_of_files_with_{}", p))
+        .map(|p| format!("words_of_files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let keyword_match_headers: String = keyword_files.paths.join(",");
@@ -331,7 +331,7 @@ pub fn run(
 
     // Open the log file for the files or create it if it does not exist.
     // If the overwrite flag is set, the file is generated anew.
-    let default_file_log_path = format!("{}.file_log.csv", input_file_path);
+    let default_file_log_path = format!("{input_file_path}.file_log.csv");
     let file_log_path: &str = files_output_path.unwrap_or(&default_file_log_path);
     let mut file_log = CSVFile::new(
         file_log_path,
@@ -427,7 +427,7 @@ pub fn run(
                                 }
                                 Err(row_nr) => {
                                     let _ = my_tx
-                                        .send(Some(Err(anyhow!("Could not parse row {}", row_nr))));
+                                        .send(Some(Err(anyhow!("Could not parse row {row_nr}"))));
                                 }
                             }
                         }
@@ -457,9 +457,9 @@ pub fn run(
                 Some(msg_content) => {
                     let (project_msg, files_msg) = msg_content?;
 
-                    writeln!(&mut project_log_file, "{}", project_msg).unwrap();
+                    writeln!(&mut project_log_file, "{project_msg}").unwrap();
                     if !files_msg.trim().is_empty() {
-                        write!(&mut file_log, "{}", files_msg).unwrap();
+                        write!(&mut file_log, "{files_msg}").unwrap();
                     }
                     progress.inc(1);
                 }
@@ -476,7 +476,7 @@ pub fn run(
         progress.finish();
         Ok(())
     })
-    .map_err(|e| anyhow!("Thread panicked: {:?}", e))?
+    .map_err(|e| anyhow!("Thread panicked: {e:?}"))?
 }
 
 /// Downloads a GitHub repository and filters the files according to the provided extensions and keywords.
@@ -561,7 +561,7 @@ fn download_repo(
 
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token))?,
+            HeaderValue::from_str(&format!("Bearer {token}"))?,
         );
 
         headers.insert(USER_AGENT, HeaderValue::from_static("Scyros"));
@@ -570,8 +570,7 @@ fn download_repo(
             "https://api.github.com/repositories/{}/zipball/{}",
             id,
             last_commit.with_context(|| format!(
-                "Last commit not found for project {} (id: {})",
-                full_name, id
+                "Last commit not found for project {full_name} (id: {id})"
             ))?
         );
 
@@ -596,8 +595,7 @@ fn download_repo(
                 .send()
                 .with_context(|| {
                     format!(
-                    "Could not download repository {} (id: {}), error while sending HTTP request",
-                    full_name, id
+                    "Could not download repository {full_name} (id: {id}), error while sending HTTP request"
                 )
                 });
             if response_res.is_err() {
@@ -606,8 +604,7 @@ fn download_repo(
                     sleep(retry_delay(attempts));
                 } else {
                     response_res = Err(anyhow!(
-                        "Could not download repository {} (id: {}), maximum number of retries reached",
-                        full_name, id
+                        "Could not download repository {full_name} (id: {id}), maximum number of retries reached"
                     ));
                 }
             }
@@ -623,7 +620,7 @@ fn download_repo(
         }
 
         // Create output file
-        let mut out: File = open_file(&format!("{}.zip", project_path), FileMode::Overwrite)?;
+        let mut out: File = open_file(&format!("{project_path}.zip"), FileMode::Overwrite)?;
 
         // Stream response to file
         match copy(&mut response, &mut out) {
@@ -637,12 +634,12 @@ fn download_repo(
         }
 
         zip_extract(
-            &format!("{}.zip", project_path).into(),
+            &format!("{project_path}.zip").into(),
             &Path::new(project_path).to_path_buf(),
         )
-        .with_context(|| format!("Failed to extract archive to {}", project_path))?;
+        .with_context(|| format!("Failed to extract archive to {project_path}"))?;
 
-        delete_file(format!("{}.zip", project_path), true)?;
+        delete_file(format!("{project_path}.zip"), true)?;
     }
 
     if delete {
@@ -687,68 +684,63 @@ fn download_repo(
         .run();
 
         for path in file_list.lines() {
-            match &load_file(path, 1024 * 1024 * 1024) {
-                Ok(file) => {
-                    let words = match file {
-                        Ok(content) => word_counter.count_matches_in_text(content),
-                        Err(_) => word_counter.count_matches_in_file(path)?,
-                    };
+            if let Ok(file) = &load_file(path, 1024 * 1024 * 1024) {
+                let words = match file {
+                    Ok(content) => word_counter.count_matches_in_text(content),
+                    Err(_) => word_counter.count_matches_in_file(path)?,
+                };
 
-                    let loc = match file {
-                        Ok(content) => content.lines().count(),
-                        Err(_) => file_lines_count(path)?,
-                    };
+                let loc = match file {
+                    Ok(content) => content.lines().count(),
+                    Err(_) => file_lines_count(path)?,
+                };
 
-                    let matches: Vec<usize> = match file {
-                        Ok(content) => keywords_files.count_matches_in_text(lang, content),
-                        Err(_) => keywords_files.count_matches_in_file(lang, path)?,
-                    };
+                let matches: Vec<usize> = match file {
+                    Ok(content) => keywords_files.count_matches_in_text(lang, content),
+                    Err(_) => keywords_files.count_matches_in_file(lang, path)?,
+                };
 
-                    dir_files_before_filter += 1;
-                    dir_loc_before_filter += loc;
-                    dir_words_before_filter += words;
+                dir_files_before_filter += 1;
+                dir_loc_before_filter += loc;
+                dir_words_before_filter += words;
 
-                    if matches.iter().any(|m| m > &0) {
-                        dir_files_after_filter_any += 1;
-                        dir_loc_after_filter_any += loc;
-                        dir_words_after_filter_any += words;
+                if matches.iter().any(|m| m > &0) {
+                    dir_files_after_filter_any += 1;
+                    dir_loc_after_filter_any += loc;
+                    dir_words_after_filter_any += words;
 
-                        for i in 0..keywords_files.len() {
-                            if matches[i] > 0 {
-                                dir_files_after_filter[i] += 1;
-                                dir_loc_after_filter[i] += loc;
-                                dir_words_after_filter[i] += words;
-                            }
+                    for i in 0..keywords_files.len() {
+                        if matches[i] > 0 {
+                            dir_files_after_filter[i] += 1;
+                            dir_loc_after_filter[i] += loc;
+                            dir_words_after_filter[i] += words;
                         }
-
-                        for (i, match_count) in matches.iter().enumerate() {
-                            dir_matches[i] += match_count;
-                        }
-
-                        // Remove commas from the filename to avoid issues with the CSV format.
-
-                        writeln!(
-                            &mut files_output,
-                            "{},{},{},{},{},{}",
-                            id,
-                            path.replace(",", "-was_comma-")
-                                .replace("\"", "-was_quote-"),
-                            lang,
-                            loc,
-                            words,
-                            matches
-                                .iter()
-                                .map(|m| m.to_string())
-                                .collect::<Vec<String>>()
-                                .join(",")
-                        )?;
-                    } else if delete {
-                        delete_file(path, false)?
                     }
+
+                    for (i, match_count) in matches.iter().enumerate() {
+                        dir_matches[i] += match_count;
+                    }
+
+                    // Remove commas from the filename to avoid issues with the CSV format.
+
+                    writeln!(
+                        &mut files_output,
+                        "{},{},{},{},{},{}",
+                        id,
+                        path.replace(",", "-was_comma-")
+                            .replace("\"", "-was_quote-"),
+                        lang,
+                        loc,
+                        words,
+                        matches
+                            .iter()
+                            .map(|m| m.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    )?;
+                } else if delete {
+                    delete_file(path, false)?
                 }
-                // When the file contains non-ASCII characters, opening it fails.
-                // In this case, we ignore the file and continue.
-                Err(_) => (),
             }
         }
     }
@@ -853,13 +845,12 @@ mod tests {
         count: bool,
         skip: bool,
     ) -> Result<()> {
-        let input_file: String = format!("{}/{}", TEST_DATA, input);
-        let output_file_project: String = format!("{}.project_log.csv", input_file);
-        let output_file_file: String = format!("{}.file_log.csv", input_file);
+        let input_file: String = format!("{TEST_DATA}/{input}");
+        let output_file_project: String = format!("{input_file}.project_log.csv");
+        let output_file_file: String = format!("{input_file}.file_log.csv");
         ensure!(
             std::path::Path::new(&input_file).exists(),
-            "Input file {} does not exist",
-            input_file
+            "Input file {input_file} does not exist"
         );
 
         // Remove the output files if they exist.
@@ -867,7 +858,7 @@ mod tests {
         delete_file(&output_file_project, true)?;
 
         let target_def: String = match target {
-            Some(t) => format!("target/tests/{}", t),
+            Some(t) => format!("target/tests/{t}"),
             None => String::new(),
         };
 
@@ -881,8 +872,7 @@ mod tests {
         for keywords_file in keywords_files {
             ensure!(
                 std::path::Path::new(keywords_file).exists(),
-                "Keywords file {} does not exist",
-                keywords_file
+                "Keywords file {keywords_file} does not exist"
             );
         }
 
@@ -904,7 +894,7 @@ mod tests {
         assert_eq!(
             CSVFile::new(&output_file_project, FileMode::Read)?.indexed_lines::<String>(0)?,
             CSVFile::new(
-                &format!("{}/{}.project_log.csv.expected", TEST_DATA, input),
+                &format!("{TEST_DATA}/{input}.project_log.csv.expected"),
                 FileMode::Read
             )?
             .indexed_lines(0)?

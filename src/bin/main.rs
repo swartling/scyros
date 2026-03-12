@@ -55,7 +55,7 @@ fn main() {
         match cli_args.subcommand_name() {
             Some (subcommand) => {
                 cli_args.subcommand_matches(subcommand).with_context(||
-                format!("The subcommand {} is not available. Run the program with the --help flag to see the list of subcommands", subcommand)).and_then
+                format!("The subcommand {subcommand} is not available. Run the program with the --help flag to see the list of subcommands")).and_then
                 (
                     |cli_subargs| {
                             if subcommand == ids::cli().get_name() {
@@ -215,7 +215,7 @@ fn main() {
                                 )
                             }
                             else {
-                                Err(anyhow!("The subcommand {} is not available. Run the program with the --help flag to see the list of subcommands", subcommand))
+                                Err(anyhow!("The subcommand {subcommand} is not available. Run the program with the --help flag to see the list of subcommands"))
                             }
                     }
                 )

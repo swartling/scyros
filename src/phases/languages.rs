@@ -300,13 +300,10 @@ pub fn run(
                         cache.get(&id).unwrap().clone()
                     } else {
                         let request1 = gh.request(&format!(
-                            "https://api.github.com/repos/{}/languages",
-                            full_name
+                            "https://api.github.com/repos/{full_name}/languages"
                         ));
-                        let request2 = gh.request(&format!(
-                            "https://api.github.com/repos/{}/commits",
-                            full_name
-                        ));
+                        let request2 = gh
+                            .request(&format!("https://api.github.com/repos/{full_name}/commits"));
                         match (request1, request2) {
                             (Ok(json_lang), Ok(json_commits)) => {
                                 ProjectInfo::from_json(&json_lang, &json_commits)?
@@ -317,7 +314,7 @@ pub fn run(
                         }
                     };
 
-                    writeln!(&mut output_file, "{}", csv_row)?;
+                    writeln!(&mut output_file, "{csv_row}")?;
 
                     progress_bar.inc(1);
                     progress_bar.set_message(request_from_cache.to_string());
@@ -325,7 +322,7 @@ pub fn run(
                 }
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx);
+                bail!("Could not parse row {idx} in the input file");
             }
         }
     }
@@ -384,7 +381,7 @@ impl ProjectInfo {
             languages.insert(
                 lan.to_owned(),
                 size.as_i64()
-                    .with_context(|| anyhow!("Could not parse the size of the language {}", lan))?,
+                    .with_context(|| anyhow!("Could not parse the size of the language {lan}"))?,
             );
         }
 
@@ -410,7 +407,7 @@ impl ProjectInfo {
     fn print_languages(languages: &HashMap<String, i64>) -> String {
         languages
             .iter()
-            .map(|(k, v)| format!("{}:{}", k, v))
+            .map(|(k, v)| format!("{k}:{v}"))
             .collect::<Vec<String>>()
             .join(";")
     }
@@ -425,8 +422,8 @@ mod tests {
 
     #[test]
     fn test_language_scraper() -> Result<()> {
-        let input_file: String = format!("{}/repos.csv", TEST_DATA);
-        let output_file: String = format!("{}.languages.csv", input_file);
+        let input_file: String = format!("{TEST_DATA}/repos.csv");
+        let output_file: String = format!("{input_file}.languages.csv");
         ensure!(std::path::Path::new(&input_file).exists());
 
         delete_file(&output_file, true)?;

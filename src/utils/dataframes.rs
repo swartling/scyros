@@ -29,7 +29,7 @@ pub fn i32(df: &DataFrame, column: &str) -> Result<Vec<i32>> {
     let i32_col = df
         .column(column)?
         .i32()
-        .with_context(|| format!("Could not convert column {} to 32 bits integers", column))?;
+        .with_context(|| format!("Could not convert column {column} to 32 bits integers"))?;
     Ok(i32_col.into_no_null_iter().collect())
 }
 
@@ -43,10 +43,7 @@ pub fn i32(df: &DataFrame, column: &str) -> Result<Vec<i32>> {
 /// A vector containing the values of the column, or an error if the column does not exist, cannot be converted to 32 bits unsigned integers, or contains null values.
 pub fn u32(df: &DataFrame, column: &str) -> Result<Vec<u32>> {
     let u32_col = df.column(column)?.u32().with_context(|| {
-        format!(
-            "Could not convert column {} to 32 bits unsigned integers",
-            column
-        )
+        format!("Could not convert column {column} to 32 bits unsigned integers")
     })?;
     Ok(u32_col.into_no_null_iter().collect())
 }
@@ -62,7 +59,7 @@ pub fn str<'a>(df: &'a DataFrame, column: &str) -> Result<Vec<&'a str>> {
     let str_col = df
         .column(column)?
         .str()
-        .with_context(|| format!("Could not convert column {} to strings", column))?;
+        .with_context(|| format!("Could not convert column {column} to strings"))?;
     Ok(str_col
         .into_iter()
         .map(|opt| opt.unwrap_or_default())

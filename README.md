@@ -23,6 +23,7 @@ A framework to design sound, reproducible and scalable mining repositories studi
 - [Authentication and Rate Limits](#authentication-and-rate-limits)
 - [Citing Scyros](#citing-scyros)
 - [License](#license)
+- [Change Log](#change-log)
 
 
 ## Installation
@@ -52,7 +53,7 @@ Each module provides its own usage documentation. For example, to inspect the mo
 scyros ids --help
 ```
 
-## 
+## Authentication and Rate Limits
 
 Some modules interact with the GitHub API and require personal access tokens (PATs). Tokens can be created by following GitHub’s documentation: [https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
 
@@ -88,3 +89,6 @@ Scyros is introduced and described in the following large-scale empirical study.
 
 ## License
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+## Change Log
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes and updates.

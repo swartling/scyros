@@ -68,14 +68,14 @@ pub fn open_file(path: &str, mode: FileMode) -> Result<File> {
             .append(true)
             .open(path),
     }
-    .with_context(|| format!("Could not open {}", path))
+    .with_context(|| format!("Could not open {path}"))
 }
 
 pub fn check_path(path: &str) -> Result<PathBuf> {
     if Path::new(path).exists() {
         Ok(PathBuf::from(path))
     } else {
-        bail!("File or directory {} not found", path)
+        bail!("File or directory {path} not found")
     }
 }
 
@@ -95,14 +95,14 @@ pub fn check_path(path: &str) -> Result<PathBuf> {
 /// * If the file could not be read, returns an error.
 pub fn load_file(path: &str, memory_limit: u64) -> Result<core::result::Result<Vec<u8>, u64>> {
     let metadata = std::fs::metadata(path)
-        .with_context(|| format!("Could not fetch metadata for file {}", path))?;
+        .with_context(|| format!("Could not fetch metadata for file {path}"))?;
     let file_size = metadata.len();
     if file_size > memory_limit {
         Ok(Err(file_size))
     } else {
         std::fs::read(path)
             .map(Ok)
-            .with_context(|| format!("Could not read file {}", path))
+            .with_context(|| format!("Could not read file {path}"))
     }
 }
 
@@ -240,8 +240,8 @@ where
 /// # Arguments
 /// * `path` - The path to the CSV file.
 /// * `schema` - A schema, i.e., a list of column names and their associated data types.
-///     This list does not need to contain all the columns of the CSV file, nor does it need to strictly contain columns of the CSV file.
-///     The columns of the CSV file that are not in the schema will be read with an inferred data type.
+///   This list does not need to contain all the columns of the CSV file, nor does it need to strictly contain columns of the CSV file.
+///   The columns of the CSV file that are not in the schema will be read with an inferred data type.
 /// * `columns` - A list of column names to read from the CSV file. If None, reads all columns.
 ///
 /// # Returns
@@ -259,7 +259,7 @@ pub fn open_csv(
         .with_has_header(true)
         .into_reader_with_file_handle(BufReader::new(open_file(path, FileMode::Read)?))
         .finish()
-        .with_context(|| format!("Could not read {}", path))
+        .with_context(|| format!("Could not read {path}"))
 }
 
 /// Writes a DataFrame to a CSV file.
@@ -275,7 +275,7 @@ pub fn write_csv(path: &str, df: &mut DataFrame) -> Result<()> {
         .include_header(true)
         .with_separator(b',')
         .finish(df)
-        .with_context(|| format!("Could not write to {}", path))
+        .with_context(|| format!("Could not write to {path}"))
 }
 
 /// Returns a list of files with a given extension in a directory and its subdirectories,
@@ -327,21 +327,17 @@ pub fn files_sorted_by_proximity(
     let root_dir = root_dir.as_ref();
 
     if !pivot_file.exists() {
-        bail!("Pivot file {:?} does not exist", pivot_file)
+        bail!("Pivot file {pivot_file:?} does not exist")
     } else {
         let pivot_canon = pivot_file
             .canonicalize()
-            .with_context(|| format!("Could not canonicalize pivot file {:?}", pivot_file))?;
+            .with_context(|| format!("Could not canonicalize pivot file {pivot_file:?}"))?;
         let root_canon = root_dir
             .canonicalize()
-            .with_context(|| format!("Could not canonicalize root dir {:?}", root_dir))?;
+            .with_context(|| format!("Could not canonicalize root dir {root_dir:?}"))?;
 
         if !pivot_canon.starts_with(&root_canon) {
-            bail!(
-                "Pivot file {:?} is not in root dir {:?}",
-                pivot_file,
-                root_dir
-            )
+            bail!("Pivot file {pivot_file:?} is not in root dir {root_dir:?}")
         } else {
             let mut files: Vec<PathBuf> = WalkDir::new(root_dir)
                 .into_iter()
@@ -414,15 +410,15 @@ mod io_tests {
         let test_dir = "tests";
         create_dir(test_dir)?;
 
-        delete_dir(&format!("{}/new_dir", test_dir), true)?;
-        ensure!(delete_dir(&format!("{}/new_dir", test_dir), false).is_err());
+        delete_dir(format!("{test_dir}/new_dir"), true)?;
+        ensure!(delete_dir(format!("{test_dir}/new_dir"), false).is_err());
 
-        let new_dir = format!("{}/new_dir/new_dir", test_dir);
+        let new_dir = format!("{test_dir}/new_dir/new_dir");
         ensure!(!Path::new(&new_dir).exists());
         create_dir(&new_dir)?;
         ensure!(Path::new(&new_dir).exists());
 
-        delete_dir(&format!("{}/new_dir", test_dir), false)?;
+        delete_dir(format!("{test_dir}/new_dir"), false)?;
         ensure!(!Path::new(&new_dir).exists());
         Ok(())
     }

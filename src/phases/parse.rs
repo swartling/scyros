@@ -183,8 +183,7 @@ pub fn run(
             for lang in l.iter() {
                 ensure!(
                     supported_languages.contains(lang),
-                    "Unsupported language: {}",
-                    lang
+                    "Unsupported language: {lang}"
                 );
             }
             l
@@ -203,11 +202,11 @@ pub fn run(
             .collect::<Vec<String>>(),
     );
 
-    let default_output_path: String = format!("{}.functions.csv", input_path);
+    let default_output_path: String = format!("{input_path}.functions.csv");
     let output_path: &str = output_path.unwrap_or(&default_output_path);
     log_output_file(output_path, false, force)?;
 
-    let default_logs_path: String = format!("{}.function_logs.csv", input_path);
+    let default_logs_path: String = format!("{input_path}.function_logs.csv");
     let logs_path: &str = logs_path.unwrap_or(&default_logs_path);
 
     log_output_file(logs_path, false, force)?;
@@ -364,8 +363,8 @@ pub fn run(
                                 }
                             },
                             Err(row_nr) => {
-                                let _ = my_tx
-                                    .send(Some(Err(anyhow!("Could not parse row {}", row_nr))));
+                                let _ =
+                                    my_tx.send(Some(Err(anyhow!("Could not parse row {row_nr}"))));
                             }
                         },
                         None => {
@@ -391,9 +390,9 @@ pub fn run(
             match msg {
                 Some(msg_content) => {
                     let (output, opt_log) = msg_content?;
-                    write!(&mut output_file, "{}", output)?;
+                    write!(&mut output_file, "{output}")?;
                     if let Some(log) = opt_log {
-                        writeln!(&mut logs_file, "{}", log)?;
+                        writeln!(&mut logs_file, "{log}")?;
                     }
                     progress.inc(1);
                 }
@@ -410,7 +409,7 @@ pub fn run(
         progress.finish();
         Ok(())
     })
-    .map_err(|e| anyhow!("Error in thread pool: {:?}", e))?
+    .map_err(|e| anyhow!("Error in thread pool: {e:?}"))?
 }
 
 /// Analyze a file and extract the functions whose body contains one of the provided keywords.
@@ -445,27 +444,27 @@ fn analyze_file(
     word_counter: &Matcher,
 ) -> Result<(String, Option<String>)> {
     let grammar = language_to_grammar(language)
-        .with_context(|| format!("Unsupported language: {}", language))?;
+        .with_context(|| format!("Unsupported language: {language}"))?;
     // Initializes the parser
     let mut parser: Parser = Parser::new();
     parser.set_language(&grammar.lang)?;
     match load_file(path, 1024 * 1024 * 1024)? {
         Ok(source_code) => {
             // Creates a folder to store the functions of the file
-            let target_folder: String = format!("{}.functions", path);
+            let target_folder: String = format!("{path}.functions");
             create_dir(&target_folder)?;
 
             // Parses the source code of the file
             let tree: Tree = parser
                 .parse(&source_code, None)
-                .with_context(|| format!("Failed to parse file {}", path))?;
+                .with_context(|| format!("Failed to parse file {path}"))?;
 
             let file_has_parse_error: bool = tree.root_node().has_error();
 
             if file_has_parse_error && fail_policy == "skip-file" {
                 Ok((String::new(), None))
             } else if file_has_parse_error && fail_policy == "abort" {
-                bail!("Parse error in file {}", path)
+                bail!("Parse error in file {path}")
             } else {
                 let root: Node<'_> = tree.root_node();
                 let (output, total_functions, functions_with_kw, functions_with_specific_kw) =
@@ -627,10 +626,7 @@ fn extract_functions(
                 let tree_without_comments: Tree = parser
                     .parse(function_code_with_strings, None)
                     .with_context(|| {
-                        format!(
-                            "Error parsing code for function {}/{}",
-                            target_folder, functions
-                        )
+                        format!("Error parsing code for function {target_folder}/{functions}")
                     })?;
 
                 // Remove string literals from the function code
@@ -1190,7 +1186,7 @@ fn find_first_error_position(root: &Node) -> Option<(usize, usize)> {
 
 fn position_to_string(position: Option<(usize, usize)>) -> String {
     match position {
-        Some((row, col)) => format!("{}:{}", row, col),
+        Some((row, col)) => format!("{row}:{col}"),
         None => "not-found".to_string(),
     }
 }
@@ -1311,21 +1307,21 @@ mod tests {
         languages: Option<Vec<&str>>,
         should_pass: bool,
     ) -> Result<()> {
-        let input_df = open_csv(&input_file_path, None, None)?;
+        let input_df = open_csv(input_file_path, None, None)?;
         ensure!(
             has_column(&input_df, "name"),
             "Input dataframe must have a 'name' column"
         );
         let input_df: Vec<&str> = dataframes::str(&input_df, "name")?;
 
-        let output_file_path = format!("{}.functions.csv", input_file_path);
+        let output_file_path = format!("{input_file_path}.functions.csv");
         delete_file(&output_file_path, true)?;
 
-        let logs_file_path = format!("{}.function_logs.csv", input_file_path);
+        let logs_file_path = format!("{input_file_path}.function_logs.csv");
         delete_file(&logs_file_path, true)?;
 
         for path in input_df.iter() {
-            delete_dir(&format!("{}.functions", path), true)?;
+            delete_dir(format!("{path}.functions"), true)?;
         }
 
         if should_pass {
@@ -1352,7 +1348,7 @@ mod tests {
                 .unwrap();
 
             let expected_logs_df = open_csv(
-                &format!("{}.function_logs.csv.expected", input_file_path),
+                &format!("{input_file_path}.function_logs.csv.expected"),
                 None,
                 None,
             )?;
@@ -1372,7 +1368,7 @@ mod tests {
             );
             let sorted_output_df = output_df.sort(vec!["path"], SortMultipleOptions::new())?;
 
-            let expected_df = open_csv(&format!("{}.expected", output_file_path), None, None)?;
+            let expected_df = open_csv(&format!("{output_file_path}.expected"), None, None)?;
             ensure!(
                 has_column(&expected_df, "path"),
                 "Expected dataframe must have a 'path' column"
@@ -1421,7 +1417,7 @@ mod tests {
         delete_file(&logs_file_path, true)?;
 
         for path in input_df {
-            delete_dir(&format!("{}.functions", path), true)?;
+            delete_dir(format!("{path}.functions"), true)?;
         }
         Ok(())
     }
@@ -1435,7 +1431,7 @@ mod tests {
             "tests/data/keywords/long_double.json",
         ];
 
-        let input_file_path = format!("{}/to_parse.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/to_parse.csv");
 
         test_parse(&input_file_path, &keywords, None, true)
     }
@@ -1448,7 +1444,7 @@ mod tests {
             "tests/data/keywords/fp_others.json",
         ];
 
-        let input_file_path = format!("{}/parse_go.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/parse_go.csv");
 
         test_parse(&input_file_path, &keywords, None, true)
     }
@@ -1457,7 +1453,7 @@ mod tests {
     fn invalid_file() -> Result<()> {
         let keywords = vec!["tests/data/keywords/c_float.json"];
 
-        let input_file_path = format!("{}/invalid.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/invalid.csv");
 
         test_parse(&input_file_path, &keywords, None, true)
     }
@@ -1466,7 +1462,7 @@ mod tests {
     fn invalid_lang() -> Result<()> {
         let keywords = vec!["tests/data/keywords/scala_float.json"];
 
-        let input_file_path = format!("{}/empty.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/empty.csv");
 
         test_parse(&input_file_path, &keywords, Some(["rust"].to_vec()), false)
     }
@@ -1475,7 +1471,7 @@ mod tests {
     fn empty() -> Result<()> {
         let keywords = vec!["tests/data/keywords/scala_float.json"];
 
-        let input_file_path = format!("{}/empty.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/empty.csv");
 
         test_parse(&input_file_path, &keywords, Some(["c"].to_vec()), true)
     }

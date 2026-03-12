@@ -272,7 +272,7 @@ pub fn run(
                     if let Ok(pages) = scrape_pages(
                         &gh,
                         &|per_page, page| {
-                            format!("https://api.github.com/repositories/{}/pulls?state=all&per_page={}&page={}", id, per_page, page)
+                            format!("https://api.github.com/repositories/{id}/pulls?state=all&per_page={per_page}&page={page}")
                         },
                         &|json| {
                             let mut pr_metadata: PRMetadata =
@@ -292,14 +292,14 @@ pub fn run(
                                 obj.to_csv((id, full_name.to_string()))
                             )?;
                         }
-                        write!(&mut output_file, "{}", pull_requests)?;
+                        write!(&mut output_file, "{pull_requests}")?;
                     }
                     progress_bar.inc(1);
                     n -= 1;
                 }
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx)
+                bail!("Could not parse row {idx} in the input file")
             }
         }
     }
@@ -631,7 +631,7 @@ fn scrape_pr_comments(gh: &Github, repo_id: u32, pr: &PRMetadata) -> Result<()> 
         }
     }
 
-    write!(&mut output_file, "{}", file_content)?;
+    write!(&mut output_file, "{file_content}")?;
     Ok(())
 }
 
@@ -657,37 +657,37 @@ mod tests {
         let tokens_file: String = "ghtokens.csv".to_string();
 
         run(
-            &input_file,
+            input_file,
             Some(&output_file.to_string()),
             &tokens_file,
             0,
             false,
             "id",
             "name",
-            &target,
+            target,
             None,
             test_logger(),
         )?;
 
         for pr_path in pr_paths {
             let pr_discussion = open_csv(pr_path, None, None)?;
-            let pr_discussion_expected = open_csv(&format!("{}.expected", pr_path), None, None)?;
+            let pr_discussion_expected = open_csv(&format!("{pr_path}.expected"), None, None)?;
             assert_eq!(pr_discussion, pr_discussion_expected);
             delete_file(pr_path, false)?;
         }
 
-        let output_df = open_csv(&output_file, None, None)?;
-        let expected_df = open_csv(&format!("{}.expected", output_file), None, None)?;
+        let output_df = open_csv(output_file, None, None)?;
+        let expected_df = open_csv(&format!("{output_file}.expected"), None, None)?;
         assert_eq!(expected_df, output_df);
-        delete_file(&output_file, false)
+        delete_file(output_file, false)
     }
 
     #[test]
     fn test_pr_empty_output() -> Result<()> {
         test_phase_pull_request(
-            &format!("{}/repos.csv", TEST_DATA),
-            &format!("{}/repos.csv.pulls.csv", TEST_DATA),
-            &format!("{}/prs", TEST_DATA),
+            &format!("{TEST_DATA}/repos.csv"),
+            &format!("{TEST_DATA}/repos.csv.pulls.csv"),
+            &format!("{TEST_DATA}/prs"),
             &vec![
                 format!("{}/prs/5983/1128315983/1128315983_1.csv", TEST_DATA),
                 format!("{}/prs/5983/1128315983/1128315983_2.csv", TEST_DATA),
@@ -697,25 +697,25 @@ mod tests {
 
     #[test]
     fn test_pr_with_output() -> Result<()> {
-        let input_path: String = format!("{}/repos2.csv", TEST_DATA);
+        let input_path: String = format!("{TEST_DATA}/repos2.csv");
         std::fs::copy(
-            &format!("{}/repos_complete.csv.expected", TEST_DATA),
-            &format!("{}/repos_complete.csv", TEST_DATA),
+            format!("{TEST_DATA}/repos_complete.csv.expected"),
+            format!("{TEST_DATA}/repos_complete.csv"),
         )?;
         test_phase_pull_request(
             &input_path,
-            &format!("{}/repos_complete.csv", TEST_DATA),
-            &format!("{}/prs2", TEST_DATA),
+            &format!("{TEST_DATA}/repos_complete.csv"),
+            &format!("{TEST_DATA}/prs2"),
             &vec![],
         )
     }
 
     #[test]
     fn test_pr_with_partial_output() -> Result<()> {
-        let input_path: String = format!("{}/repos3.csv", TEST_DATA);
-        let output_path: String = format!("{}/repos_partial_output.csv.temp", TEST_DATA);
+        let input_path: String = format!("{TEST_DATA}/repos3.csv");
+        let output_path: String = format!("{TEST_DATA}/repos_partial_output.csv.temp");
         std::fs::copy(
-            &format!("{}/repos_partial_output.csv", TEST_DATA),
+            format!("{TEST_DATA}/repos_partial_output.csv"),
             &output_path,
         )?;
         ensure!(std::path::Path::new(&output_path).exists());
@@ -723,7 +723,7 @@ mod tests {
         test_phase_pull_request(
             &input_path,
             &output_path,
-            &format!("{}/prs3", TEST_DATA),
+            &format!("{TEST_DATA}/prs3"),
             &vec![],
         )
     }
@@ -731,9 +731,9 @@ mod tests {
     #[test]
     fn test_language_scraper_inexistent() -> Result<()> {
         test_phase_pull_request(
-            &format!("{}/invalid.csv", TEST_DATA),
-            &format!("{}/invalid.csv.pulls.csv", TEST_DATA),
-            &format!("{}/prs_invalid", TEST_DATA),
+            &format!("{TEST_DATA}/invalid.csv"),
+            &format!("{TEST_DATA}/invalid.csv.pulls.csv"),
+            &format!("{TEST_DATA}/prs_invalid"),
             &vec![],
         )
     }

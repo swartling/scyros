@@ -101,7 +101,7 @@ pub fn run(
     no_output: bool,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path = format!("{}.filtered_lang.csv", input_path);
+    let default_output_path = format!("{input_path}.filtered_lang.csv");
     let output_path = output_path.unwrap_or(&default_output_path);
 
     check_path(input_path)?;
@@ -241,8 +241,8 @@ mod tests {
 
     #[test]
     fn test_filter_languages() -> Result<()> {
-        let input_path = format!("{}/filter_languages.csv", TEST_DATA);
-        let default_output_path = format!("{}.filtered_lang.csv", input_path);
+        let input_path = format!("{TEST_DATA}/filter_languages.csv");
+        let default_output_path = format!("{input_path}.filtered_lang.csv");
         let language_path = "tests/data/keywords/scala_float.json";
 
         delete_file(&default_output_path, true)?;
@@ -255,7 +255,7 @@ mod tests {
             test_logger(),
         )?;
 
-        let expected_df = open_csv(&format!("{}.expected", default_output_path), None, None)?;
+        let expected_df = open_csv(&format!("{default_output_path}.expected"), None, None)?;
         let output_df = open_csv(&default_output_path, None, None)?;
 
         ensure!(

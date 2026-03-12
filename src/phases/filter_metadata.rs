@@ -132,7 +132,7 @@ pub fn run(
     no_output: bool,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path = format!("{}.filtered.csv", input_path);
+    let default_output_path = format!("{input_path}.filtered.csv");
     let output_path = output_path.unwrap_or(&default_output_path);
 
     check_path(input_path)?;
@@ -356,8 +356,8 @@ mod tests {
 
     #[test]
     fn test_filter_metadata() -> Result<()> {
-        let input_path = format!("{}/filter_metadata.csv", TEST_DATA);
-        let default_output_path = format!("{}.filtered.csv", input_path);
+        let input_path = format!("{TEST_DATA}/filter_metadata.csv");
+        let default_output_path = format!("{input_path}.filtered.csv");
 
         delete_file(&default_output_path, true)?;
         run(
@@ -372,7 +372,7 @@ mod tests {
             test_logger(),
         )?;
 
-        let expected_df = open_csv(&format!("{}.expected", default_output_path), None, None)?;
+        let expected_df = open_csv(&format!("{default_output_path}.expected"), None, None)?;
 
         let output_df = open_csv(&default_output_path, None, None)?;
 

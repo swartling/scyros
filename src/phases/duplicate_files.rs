@@ -116,8 +116,8 @@ pub fn run(
     input_header: &str,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path: String = format!("{}.unique.csv", input_path);
-    let default_map_path: String = format!("{}.duplicates_map.csv", input_path);
+    let default_output_path: String = format!("{input_path}.unique.csv");
+    let default_map_path: String = format!("{input_path}.duplicates_map.csv");
     let output_path: &str = output_path.unwrap_or(&default_output_path);
     let map_path: &str = map_path.unwrap_or(&default_map_path);
 
@@ -305,7 +305,7 @@ pub fn run(
 
         log_write_output(logger, output_path, &mut output_df, false)
     })
-    .map_err(|e| anyhow!("Error in child thread: {:?}", e))??;
+    .map_err(|e| anyhow!("Error in child thread: {e:?}"))??;
 
     Ok(())
 }
@@ -322,12 +322,12 @@ mod tests {
     const TEST_DATA: &str = "tests/data/phases/duplicate_files/";
 
     fn test_duplicate_files(input_path: &str, similarity: &str) -> Result<()> {
-        let default_output_path = format!("{}.unique.csv", input_path);
-        let default_map_path = format!("{}.duplicates_map.csv", input_path);
+        let default_output_path = format!("{input_path}.unique.csv");
+        let default_map_path = format!("{input_path}.duplicates_map.csv");
         delete_file(&default_output_path, true)?;
         delete_file(&default_map_path, true)?;
         run(
-            &input_path,
+            input_path,
             None,
             None,
             false,
@@ -337,7 +337,7 @@ mod tests {
             test_logger(),
         )?;
 
-        let expected_df = open_csv(&format!("{}.expected", default_output_path), None, None)?;
+        let expected_df = open_csv(&format!("{default_output_path}.expected"), None, None)?;
 
         let output_df = open_csv(&default_output_path, None, None)?;
 
@@ -347,7 +347,7 @@ mod tests {
 
         delete_file(&default_output_path, false)?;
 
-        let expected_map = open_csv(&format!("{}.expected", default_map_path), None, None)?;
+        let expected_map = open_csv(&format!("{default_map_path}.expected"), None, None)?;
 
         let map_df = open_csv(&default_map_path, None, None)?;
 
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn exact_files() -> Result<()> {
-        test_duplicate_files(&format!("{}/duplicate_files.csv", TEST_DATA), "exact")?;
-        test_duplicate_files(&format!("{}/duplicate_files_bow.csv", TEST_DATA), "bow")
+        test_duplicate_files(&format!("{TEST_DATA}/duplicate_files.csv"), "exact")?;
+        test_duplicate_files(&format!("{TEST_DATA}/duplicate_files_bow.csv"), "bow")
     }
 }

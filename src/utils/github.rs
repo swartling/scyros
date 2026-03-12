@@ -39,7 +39,7 @@ pub fn is_valid_token_file(file_path: &str) -> Result<()> {
         )])),
         Some(vec!["token"]),
     )
-    .with_context(|| format!("Invalid token file {}", file_path))?;
+    .with_context(|| format!("Invalid token file {file_path}"))?;
 
     if token_file.height() == 0 {
         bail!("Token file is empty");
@@ -55,7 +55,7 @@ pub fn is_valid_token_file(file_path: &str) -> Result<()> {
 
             easy.url("https://api.github.com").and_then(|_| {
                 easy.get(true)
-                    .and_then(|_| headers.append(&format!("Authorization: token {}", token)))
+                    .and_then(|_| headers.append(&format!("Authorization: token {token}")))
                     .and_then(|_| headers.append("User-Agent: Rust-curl"))
                     .and_then(|_| easy.http_headers(headers))
             })?;

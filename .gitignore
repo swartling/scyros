@@ -15,3 +15,5 @@ ghtokens.csv
 
 *.zip
 *.tar.gz
+
+result/

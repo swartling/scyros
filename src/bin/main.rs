@@ -105,7 +105,7 @@ fn main() {
                                 filter_metadata::run(
                                     cli_subargs.get_one::<String>("input").unwrap(),
                                     cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
-                                    cli_subargs.get_one::<u64>("loc").unwrap().to_owned(),
+                                    cli_subargs.get_one::<u64>("size").unwrap().to_owned(),
                                     cli_subargs.get_one::<u32>("age").unwrap().to_owned(),
                                     cli_subargs.get_flag("disabled"),
                                     cli_subargs.get_flag("non-code"),

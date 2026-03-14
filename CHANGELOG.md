@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Wrong parameter passed to `filter_metadata` subcommand.
 
+### Changed
+
+- Bumped Rust version to 1.93 to accommodate Nix flake requirements.
+
 ## [0.2.3] - 2026-03-14
 
 ### Fixed

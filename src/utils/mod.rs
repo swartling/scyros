@@ -13,11 +13,13 @@
 // limitations under the License.
 
 pub mod bow;
+pub mod candidate_map;
 pub mod csv;
 pub mod dataframes;
 pub mod fs;
 pub mod github;
 pub mod github_api;
+pub mod inverted_index;
 pub mod json;
 pub mod logger;
 pub mod regex;

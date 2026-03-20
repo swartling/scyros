@@ -26,4 +26,4 @@ pub mod metadata;
 pub mod parse;
 pub mod pull_request;
 pub mod tokenizer;
-//pub mod type_3_duplicate_files;
+pub mod type_3_duplicate_files;

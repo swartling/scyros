@@ -17,6 +17,7 @@ use clap::{Arg, ArgAction, Command};
 use scyros::phases::{
     download, duplicate_files, duplicate_ids, extract_benchmarks, filter_languages,
     filter_metadata, forks, ids, languages, metadata, parse, pull_request, tokenizer,
+    type_3_duplicate_files,
 };
 use scyros::utils::logger::Logger;
 use tracing::{error, info};
@@ -38,6 +39,7 @@ fn cli() -> Command {
         .subcommand(parse::cli())
         .subcommand(extract_benchmarks::cli())
         .subcommand(tokenizer::cli())
+        .subcommand(type_3_duplicate_files::cli())
         .arg(
             Arg::new("debug")
                 .long("debug")
@@ -238,6 +240,20 @@ fn main() {
                                     //cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
                                     //cli_subargs.get_one::<String>("language").unwrap(),
                                     cli_subargs.get_one::<String>("example_word").unwrap(),
+                                    &logger,
+                                )
+                            }
+                            else if subcommand == type_3_duplicate_files::cli().get_name() {
+                                type_3_duplicate_files::run(
+                                    cli_subargs.get_one::<String>("input").unwrap(),
+                                    cli_subargs.get_one::<String>("output").map(|x| x.as_str()),
+                                    cli_subargs.get_one::<String>("map").map(|x| x.as_str()),
+                                    cli_subargs.get_one::<String>("logs").map(|x| x.as_str()),
+                                    /* languages */
+                                    *cli_subargs.get_one::<usize>("threads").unwrap(),
+                                    *cli_subargs.get_one::<usize>("p_prefix").unwrap(),
+                                    *cli_subargs.get_one::<f64>("threshold").unwrap(),
+                                    cli_subargs.get_one::<String>("example_word"),
                                     &logger,
                                 )
                             }

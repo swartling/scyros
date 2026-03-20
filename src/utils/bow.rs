@@ -109,6 +109,11 @@ impl Bow {
         }
         rankings
     }
+
+    pub fn vectorize(self) -> Vec<(Vec<u8>, usize)> {
+        let vector: Vec<(Vec<u8>, usize)> = self.map.into_iter().collect();
+        vector
+    }
 }
 
 #[cfg(test)]

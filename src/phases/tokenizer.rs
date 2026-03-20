@@ -6,13 +6,13 @@ use crate::utils::bow::*;
 use crate::utils::fs::*;
 use crate::utils::regex::*;
 use crate::utils::{/* csv::*,  */ logger::Logger};
-use anyhow::{anyhow, /*bail, Context,  */ Result};
+use anyhow::{/*anyhow, bail, Context,  */ Result};
 use tracing::info;
 /* use clang::token;
 use polars::frame::row; */
 use clap::{Arg, /* ArgAction, */ Command};
 use polars::prelude::*;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 /* struct Token {
     word: Vec<u8>,
     local_count: usize,
@@ -42,7 +42,7 @@ pub fn cli() -> Command {
         )
 }
 
-pub fn run(input_path: &str, example_word: &str, logger: &Logger) -> Result<()> {
+pub fn run(input_path: &str, example_word: &str, _logger: &Logger) -> Result<()> {
     let language = "java";
     let minimum_loc = 5; //temporary
                          //let separators = vec!["(", ")", "[", "]", "{", "}", ";", ".", ",", ":", "=", "+", "-", "*", "/", "%", "<", ">", "&", "|", "!", "?", "~", "^", "#", "$", "@", "\"", "\\", "`", "'"]; //hardcoded separators for now. Will add more later and make it configurable.
@@ -107,8 +107,8 @@ pub fn run(input_path: &str, example_word: &str, logger: &Logger) -> Result<()> 
         }
     );
 
-    let token_rankings = run_tokenizer(&input_file, logger)?;
-
+    //let token_rankings = run_tokenizer(&input_file, logger)?;
+    let token_rankings = global_counter(&input_file)?.token_rankings();
     let example_word = example_word.to_ascii_lowercase();
     let example_word_token = example_word.as_bytes();
 
@@ -132,7 +132,7 @@ pub fn run(input_path: &str, example_word: &str, logger: &Logger) -> Result<()> 
     Ok(())
 }
 
-pub fn run_tokenizer(
+/* pub fn run_tokenizer(
     input_file: &DataFrame,
     //output_path: &str,
     //language: &str,
@@ -146,9 +146,9 @@ pub fn run_tokenizer(
         global_bow.token_rankings();
 
     Some(token_rankings).ok_or_else(|| anyhow!("No tokens found in the global Bag of Words."))
-}
+} */
 
-fn global_counter(input_file: &DataFrame) -> Result<Bow> {
+pub fn global_counter(input_file: &DataFrame) -> Result<Bow> {
     let word_matcher: Matcher = Matcher::words_matcher();
     let mut global_bow: Bow = Bow::new();
 

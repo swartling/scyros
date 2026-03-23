@@ -92,7 +92,7 @@ pub fn run(
     no_output: bool,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path = format!("{}.unique.csv", input_path);
+    let default_output_path = format!("{input_path}.unique.csv");
     let output_path = output_path.unwrap_or(&default_output_path);
 
     check_path(input_path)?;
@@ -136,13 +136,13 @@ mod tests {
 
     #[test]
     fn test_duplicate_ids() -> Result<()> {
-        let input_path = format!("{}/duplicate_ids.csv", TEST_DATA);
-        let default_output_path = format!("{}.unique.csv", input_path);
+        let input_path = format!("{TEST_DATA}/duplicate_ids.csv");
+        let default_output_path = format!("{input_path}.unique.csv");
 
         delete_file(&default_output_path, true)?;
         run(&input_path, None, "id", false, false, test_logger())?;
 
-        let expected_output_path = format!("{}.expected", default_output_path);
+        let expected_output_path = format!("{default_output_path}.expected");
         let expected_df = open_csv(&expected_output_path, None, None)?;
         let output_df = open_csv(&default_output_path, None, None)?;
 

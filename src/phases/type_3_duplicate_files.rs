@@ -312,3 +312,13 @@ fn index_builder(
     let total_cost = previous_cost + cost;
     total_cost
 } */
+
+/* fn clone_detection(
+    input_file: &DataFrame,
+    token_rankings: HashMap<Vec<u8>, (usize, usize)>,
+    vector_of_indices: &Vec<InvertedIndex>,
+    threshold: f64,
+) -> Result<()> { // result will probably be a 'clone-map'. Unsure for now if it has to be its own data-structure or if i can reuse the candidate map from before.
+    // This is where the actual clone detection happens, currently not implemented
+    Ok(())
+} */

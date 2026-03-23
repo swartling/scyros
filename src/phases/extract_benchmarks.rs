@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[doc = include_str!("../docs/extract_benchmarks.md")]
 use crate::utils::csv::CSVFile;
 use crate::utils::dataframes;
 use crate::utils::fs::*;
@@ -47,10 +48,7 @@ use tracing::{info, warn};
 pub fn cli() -> Command {
     Command::new("extract_benchmarks")
         .about("(Experimental) Extract self-contained C files containing all the dependencies of specified functions.")
-        .long_about(
-            "(Experimental) Extracts self-contained C files containing all the dependencies of specified functions."
-
-        )
+        .long_about(include_str!("../docs/extract_benchmarks.md"))
         .author("Andrea Gilot <andrea.gilot@it.uu.se>")
         .disable_version_flag(true)
         .arg(
@@ -158,9 +156,9 @@ impl Display for EntityKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (&self.usr, &self.name) {
             (None, None) => write!(f, "<unknown>"),
-            (Some(usr), Some(name)) => write!(f, "({}: {:?})", name, usr),
-            (Some(usr), None) => write!(f, "(<unknown>: {:?})", usr),
-            (None, Some(name)) => write!(f, "({}: <unknown>)", name),
+            (Some(usr), Some(name)) => write!(f, "({name}: {usr:?})"),
+            (Some(usr), None) => write!(f, "(<unknown>: {usr:?})"),
+            (None, Some(name)) => write!(f, "({name}: <unknown>)"),
         }
     }
 }
@@ -387,7 +385,7 @@ impl Workspace {
                     if rest.starts_with('<') {
                         if let Some(end) = rest.find('>') {
                             let inc = &rest[..=end];
-                            self.includes.insert(format!("#include{}", inc));
+                            self.includes.insert(format!("#include{inc}"));
                         }
                     }
                 }
@@ -487,7 +485,7 @@ impl Workspace {
             .pop_front()
             .with_context(|| "No root file found")?;
         self.index_file(&root_file, None)
-            .with_context(|| format!("Could not index root file {:?}", root_file))?;
+            .with_context(|| format!("Could not index root file {root_file:?}"))?;
         for key in self.decl.keys() {
             if key.name.as_deref() == Some(&self.root_function_name) {
                 return Ok(key);
@@ -564,7 +562,7 @@ impl Workspace {
                 .pop_front()
                 .ok_or_else(|| anyhow!("No more entities to explore"))?;
             self.explore_entity(&key, &mut explored, &mut to_explore)
-                .with_context(|| format!("Error exploring entity {}", key))?;
+                .with_context(|| format!("Error exploring entity {key}"))?;
         }
         // Topological sort of the dependency graph
         let mut sorted_idx = toposort(&self.dependencies, None)
@@ -652,7 +650,7 @@ pub fn run(
 
     let mut input_file = input_df
         .filter(&mask.into_iter().collect::<ChunkedArray<BooleanType>>())
-        .with_context(|| format!("Could not filter input file {}", input_file_path))?;
+        .with_context(|| format!("Could not filter input file {input_file_path}"))?;
 
     let project_input = format!("{}/{}", target, "tmp_in.csv");
 
@@ -665,7 +663,7 @@ pub fn run(
         Some(&projects_output),
         None,
         target,
-        tokens_file,
+        Some(tokens_file),
         &["keywords/c_files.json"],
         false,
         false,
@@ -673,6 +671,7 @@ pub fn run(
         seed,
         logger,
         thread,
+        "sequential",
     )?;
 
     let projects_df: DataFrame = logger.run_task("Loading downloaded projects", || {
@@ -732,7 +731,7 @@ pub fn run(
         }
     });
 
-    let default_output_path = format!("{}.benchmarks.csv", input_file_path);
+    let default_output_path = format!("{input_file_path}.benchmarks.csv");
     let output_path: &str = output.unwrap_or(&default_output_path);
     let mut output_file = CSVFile::new(
         output_path,
@@ -797,13 +796,13 @@ pub fn run(
             Ok((_, id, rel_path, function)) => {
                 let proj_path = id_to_projects
                     .get(&id)
-                    .with_context(|| format!("Could not get project path for id {}", id))?;
+                    .with_context(|| format!("Could not get project path for id {id}"))?;
                 if *proj_path == "error" {
                     let csv_row = format!("{},{},{},{}", id, rel_path, function, "error");
-                    writeln!(&mut output_file, "{}", csv_row)?;
+                    writeln!(&mut output_file, "{csv_row}")?;
                 } else {
-                    let abs_path = format!("{}/{}", proj_path, rel_path);
-                    let out_path = format!("{}/benchmarks/{}-{}.c", target, id, function);
+                    let abs_path = format!("{proj_path}/{rel_path}");
+                    let out_path = format!("{target}/benchmarks/{id}-{function}.c");
                     if !previous_results.contains(&(abs_path.clone(), function.to_owned())) {
                         info!(
                             "Extracting benchmark for function {} in file {}",
@@ -811,14 +810,13 @@ pub fn run(
                         );
                         match extract_root(proj_path, &abs_path, function, &out_path, timeout) {
                             Ok(()) => {
-                                let csv_row =
-                                    format!("{},{},{},{}", id, abs_path, function, out_path);
-                                writeln!(&mut output_file, "{}", csv_row)?;
+                                let csv_row = format!("{id},{abs_path},{function},{out_path}");
+                                writeln!(&mut output_file, "{csv_row}")?;
                             }
                             Err(e) => {
                                 let csv_row =
                                     format!("{},{},{},{}", id, abs_path, function, "error");
-                                writeln!(&mut output_file, "{}", csv_row)?;
+                                writeln!(&mut output_file, "{csv_row}")?;
                                 warn!(
                                     "Could not extract benchmark for function {} in file {}:\n {}",
                                     function, abs_path, e
@@ -831,7 +829,7 @@ pub fn run(
                 progress_bar.inc(1);
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx)
+                bail!("Could not parse row {idx} in the input file")
             }
         }
     }
@@ -839,9 +837,8 @@ pub fn run(
     Ok(())
 }
 
-pub fn run_with_timeout<F, T>(dur: Duration, f: F) -> Result<T>
+pub fn run_with_timeout<T>(dur: Duration, f: impl FnOnce() -> T + Send + 'static) -> Result<T>
 where
-    F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
@@ -890,7 +887,7 @@ mod tests {
         const MACRO_MAIN: &str = "main";
 
         fn extract_code_test() -> Result<()> {
-            let path = format!("{}/simple/simple.c", TEST_DATA);
+            let path = format!("{TEST_DATA}/simple/simple.c");
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
             let index: Index = Index::new(&clang, true, true);
 
@@ -905,7 +902,7 @@ mod tests {
 
         fn stack_workspace() -> Result<Workspace> {
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
-            let project_root = PathBuf::from(format!("{}/stack_project", TEST_DATA));
+            let project_root = PathBuf::from(format!("{TEST_DATA}/stack_project"));
             let root_file = project_root.join("stack.c");
             let root_function = STACK_MAIN;
             Workspace::new(clang, &project_root, &root_file, root_function, true, 5)
@@ -913,7 +910,7 @@ mod tests {
 
         fn simple_workspace() -> Result<Workspace> {
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
-            let project_root = PathBuf::from(format!("{}/simple", TEST_DATA));
+            let project_root = PathBuf::from(format!("{TEST_DATA}/simple"));
             let root_file = project_root.join("simple.c");
             let root_function = "helper";
             Workspace::new(clang, &project_root, &root_file, root_function, true, 5)
@@ -921,7 +918,7 @@ mod tests {
 
         fn ext_workspace() -> Result<Workspace> {
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
-            let project_root = PathBuf::from(format!("{}/ext", TEST_DATA));
+            let project_root = PathBuf::from(format!("{TEST_DATA}/ext"));
             let root_file = project_root.join("ext.c");
             let root_function = EXT_MAIN;
             Workspace::new(clang, &project_root, &root_file, root_function, true, 5)
@@ -929,14 +926,14 @@ mod tests {
 
         fn const_workspace() -> Result<Workspace> {
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
-            let project_root = PathBuf::from(format!("{}/const", TEST_DATA));
+            let project_root = PathBuf::from(format!("{TEST_DATA}/const"));
             let root_file = project_root.join("add.c");
             Workspace::new(clang, &project_root, &root_file, CONST_MAIN, true, 5)
         }
 
         fn macro_workspace() -> Result<Workspace> {
             let clang: Clang = Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
-            let project_root = PathBuf::from(format!("{}/macro", TEST_DATA));
+            let project_root = PathBuf::from(format!("{TEST_DATA}/macro"));
             let root_file = project_root.join("abs.c");
             Workspace::new(clang, &project_root, &root_file, MACRO_MAIN, true, 5)
         }
@@ -947,7 +944,7 @@ mod tests {
             assert_eq!(ws.candidates.len(), 1);
             assert_eq!(
                 ws.candidates[0],
-                PathBuf::from(format!("{}/stack_project/stack.c", TEST_DATA))
+                PathBuf::from(format!("{TEST_DATA}/stack_project/stack.c"))
             );
             ensure!(ws.decl.is_empty());
             assert_eq!(ws.dependencies.node_count(), 0);
@@ -957,7 +954,7 @@ mod tests {
         }
 
         fn workspace_index_file_test() -> Result<()> {
-            let file = PathBuf::from(format!("{}/stack_project/stack.c", TEST_DATA));
+            let file = PathBuf::from(format!("{TEST_DATA}/stack_project/stack.c"));
             let mut ws = stack_workspace()?;
             ws.index_file(&file, None)?;
             assert_eq!(ws.root_function_name, STACK_MAIN);
@@ -972,7 +969,7 @@ mod tests {
 
         fn workspace_discover_candidates_test() -> Result<()> {
             let key = {
-                let path = format!("{}/stack_project/stack.c", TEST_DATA);
+                let path = format!("{TEST_DATA}/stack_project/stack.c");
                 let clang: Clang =
                     Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
@@ -1056,7 +1053,7 @@ mod tests {
 
         fn workspace_add_node_test() -> Result<()> {
             let key = {
-                let path = format!("{}/stack_project/stack.c", TEST_DATA);
+                let path = format!("{TEST_DATA}/stack_project/stack.c");
                 let clang: Clang =
                     Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
@@ -1084,7 +1081,7 @@ mod tests {
 
         fn workspace_add_edge_test() -> Result<()> {
             let keys = {
-                let path = format!("{}/stack_project/stack.c", TEST_DATA);
+                let path = format!("{TEST_DATA}/stack_project/stack.c");
                 let clang: Clang =
                     Clang::new().map_err(|_| anyhow!("Could not initialize Clang"))?;
                 let index: Index = Index::new(&clang, true, true);
@@ -1126,7 +1123,7 @@ mod tests {
             assert_eq!(ws.root_function_name, STACK_MAIN);
             ensure!(ws.candidates.is_empty());
             assert_eq!(ws.decl, decl_before);
-            assert_eq!(explored == HashSet::from([key]), true);
+            assert!(explored == HashSet::from([key]));
             ensure!(!to_explore.is_empty());
             Ok(())
         }
@@ -1141,7 +1138,7 @@ mod tests {
             assert_eq!(ws.root_function_name, EXT_MAIN);
             ensure!(ws.candidates.is_empty());
             assert_eq!(ws.decl, decl_before);
-            assert_eq!(explored == HashSet::from([key.clone()]), true);
+            assert!(explored == HashSet::from([key.clone()]));
 
             let ignore1 = to_explore
                 .pop_front()
@@ -1151,7 +1148,7 @@ mod tests {
             assert_eq!(ws.root_function_name, EXT_MAIN);
             ensure!(ws.candidates.is_empty());
             assert_eq!(ws.decl, decl_before);
-            assert_eq!(explored == HashSet::from([key, ignore1]), true);
+            assert!(explored == HashSet::from([key, ignore1]));
             Ok(())
         }
 
@@ -1173,38 +1170,38 @@ mod tests {
             let mut ws = simple_workspace()?;
             let dependencies = ws.resolve_dependencies()?;
             let code = ws.emit_code(&dependencies)?;
-            let expected = std::fs::read(format!("{}/simple_expected.c", TEST_DATA))?;
+            let expected = std::fs::read(format!("{TEST_DATA}/simple_expected.c"))?;
             assert_eq!(code.trim_ascii(), expected);
             Ok(())
         }
 
         fn run_simple_test() -> Result<()> {
-            let project_root = format!("{}/simple", TEST_DATA);
-            let root_file = format!("{}/simple.c", project_root);
+            let project_root = format!("{TEST_DATA}/simple");
+            let root_file = format!("{project_root}/simple.c");
             let root_function = SIMPLE_MAIN;
-            let out_path_str = format!("{}/simple_out.c", TEST_DATA);
+            let out_path_str = format!("{TEST_DATA}/simple_out.c");
             delete_file(&out_path_str, true)?;
             extract_root(&project_root, &root_file, root_function, &out_path_str, 5)?;
             let out_path = check_path(&out_path_str)?;
             let out_content = std::fs::read(&out_path)?;
-            let expected = std::fs::read(format!("{}/simple_expected.c", TEST_DATA))?;
+            let expected = std::fs::read(format!("{TEST_DATA}/simple_expected.c"))?;
             assert_eq!(out_content.trim_ascii(), expected);
             std::fs::remove_file(&out_path_str)?;
             Ok(())
         }
 
         fn run_with_make_test() -> Result<()> {
-            let project_root = format!("{}/with_make", TEST_DATA);
-            let root_file = format!("{}/main.c", project_root);
+            let project_root = format!("{TEST_DATA}/with_make");
+            let root_file = format!("{project_root}/main.c");
             let root_function = "main";
-            let out_path_str = format!("{}/with_make_out.c", TEST_DATA);
+            let out_path_str = format!("{TEST_DATA}/with_make_out.c");
             delete_file(&out_path_str, true)?;
             extract_root(&project_root, &root_file, root_function, &out_path_str, 5)?;
             let out_path = check_path(&out_path_str)?;
             let out_content = std::fs::read(&out_path)?;
-            let expected = std::fs::read(format!("{}/with_make_expected.c", TEST_DATA))?;
+            let expected = std::fs::read(format!("{TEST_DATA}/with_make_expected.c"))?;
             assert_eq!(
-                String::from_utf8_lossy(&out_content.trim_ascii()),
+                String::from_utf8_lossy(out_content.trim_ascii()),
                 String::from_utf8_lossy(&expected)
             );
             std::fs::remove_file(&out_path_str)?;
@@ -1212,38 +1209,38 @@ mod tests {
         }
 
         fn run_ext_test() -> Result<()> {
-            let project_root = format!("{}/ext", TEST_DATA);
-            let root_file = format!("{}/ext.c", project_root);
+            let project_root = format!("{TEST_DATA}/ext");
+            let root_file = format!("{project_root}/ext.c");
             let root_function = EXT_MAIN;
-            let out_path_str = format!("{}/ext_out.c", TEST_DATA);
+            let out_path_str = format!("{TEST_DATA}/ext_out.c");
             delete_file(&out_path_str, true)?;
             extract_root(&project_root, &root_file, root_function, &out_path_str, 5)?;
             let out_path = check_path(&out_path_str)?;
-            let out_content = String::from_utf8_lossy(&std::fs::read(&out_path)?.trim_ascii())
+            let out_content = String::from_utf8_lossy(std::fs::read(&out_path)?.trim_ascii())
                 .lines()
                 .skip(2)
                 .collect::<Vec<_>>()
                 .join("\n");
             let out_content = out_content.trim();
-            let expected = std::fs::read(format!("{}/ext_expected.c", TEST_DATA))?;
+            let expected = std::fs::read(format!("{TEST_DATA}/ext_expected.c"))?;
             assert_eq!(out_content, String::from_utf8_lossy(&expected));
             std::fs::remove_file(&out_path_str)?;
             Ok(())
         }
 
         fn run_macro_test() -> Result<()> {
-            let project_root = format!("{}/macro", TEST_DATA);
-            let root_file = format!("{}/abs.c", project_root);
+            let project_root = format!("{TEST_DATA}/macro");
+            let root_file = format!("{project_root}/abs.c");
             let root_function = MACRO_MAIN;
-            let out_path_str = format!("{}/macro_out.c", TEST_DATA);
+            let out_path_str = format!("{TEST_DATA}/macro_out.c");
             delete_file(&out_path_str, true)?;
             extract_root(&project_root, &root_file, root_function, &out_path_str, 5)?;
             let out_path = check_path(&out_path_str)?;
             let out_content = std::fs::read(&out_path)?;
             let out_content = out_content.trim_ascii();
-            let expected = std::fs::read(format!("{}/macro_expected.c", TEST_DATA))?;
+            let expected = std::fs::read(format!("{TEST_DATA}/macro_expected.c"))?;
             assert_eq!(
-                String::from_utf8_lossy(&out_content),
+                String::from_utf8_lossy(out_content),
                 String::from_utf8_lossy(&expected)
             );
             std::fs::remove_file(&out_path_str)?;

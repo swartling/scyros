@@ -30,17 +30,17 @@ use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::{copy, BufRead, Write};
 use std::iter::FromIterator as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
-use tracing::info;
+use tracing::{debug, info};
+use walkdir::WalkDir;
 use zip_extensions::zip_extract::zip_extract;
 
 use crate::utils::csv::*;
 use crate::utils::fs::*;
 use crate::utils::regex::*;
-use crate::utils::shell_commands::{FileType, FindCommand, ShellCommand};
 
 /// Command line arguments parsing.
 pub fn cli() -> Command {
@@ -81,7 +81,8 @@ pub fn cli() -> Command {
                 .value_name("TOKENS_FILE.csv")
                 .help("Path to the file containing the GitHub tokens to use. It must be a valid CSV file with one column named 'token' and where every line is a \
                        valid GitHub token (e.g ghp_Ab0C1D2eFg3hIjk4LM56oPqRsTuvWX7yZa8B).")
-                .required(true)
+                .conflicts_with("skip")
+                .required_unless_present("skip"),
         )
         .arg(
             Arg::new("dest")
@@ -101,13 +102,16 @@ pub fn cli() -> Command {
                 .value_name("KEYWORDS_FILES.json")
                 .help("List of files containing the list of extensions and keywords to use. The files must be in JSON format.\n\
                        The extensions should be written without the period (`java` instead of `.java`). The files must have the following structure:\n    \
-                        {\n        \
-                            \"extensions\": {\n            \
-                                \"ext1\": [\"kw11\", \"kw12\", ...],\n            \
-                                \"ext2\": [\"kw21\", \"kw22\", ...],\n            \
-                                ...\n        \
-                            },\n        \
-                            \"keywords\": [\"kw1\", \"kw2\", ...]\n    \
+                        {\n\
+                            \"languages\": [\n\
+                                {\n\
+                                \"name\": \"LanguageName\",\n\
+                                \"extensions\": [\".ext1\", \".ext2\", ...],\n\
+                                \"keywords\": [\"localKeyword1\", \"localKeyword2\", ...]    // optional\n\
+                                },\n\
+                                ...\n\
+                            ],\n\
+                            \"keywords\": [\"globalKeyword1\", \"globalKeyword2\", ...]      // optional\n\
                         }")
                 .required(true)
         )
@@ -123,6 +127,14 @@ pub fn cli() -> Command {
                 .help("Compute statistics on the downloaded projects without deleting any file.")
                 .action(ArgAction::SetTrue)
         )
+        .arg(
+            Arg::new("order")
+                .long("order")
+                .help("Order in which the projects are processed.")
+                .value_parser(["random", "sequential"])
+                .default_value("random")
+        )
+
         .arg(
             Arg::new("force")
                 .long("force")
@@ -148,74 +160,29 @@ pub fn cli() -> Command {
         )
 }
 
-/// Runs the downloader.
+/// Entry point of the program
 ///
 /// # Arguments
 ///
-/// * `input_file` - Path to the input csv file to use.
+/// * `input_file_path` - Path to the input csv file to use.
+/// * `projects_output_path` - Path to the output csv file storing the project statistics. If not specified, the input file name will be used with ".project_log.csv" appended.
+/// * `files_output_path` - Path to the output csv file storing the file statistics. If not specified, the input file name will be used with ".file_log.csv" appended.
 /// * `target` - Path to the directory where projects will be downloaded.
 /// * `tokens_file` - Path to the file containing the GitHub tokens to use.
-/// * `keywords_files` - Path to the files containing the list of extensions and keywords to use.
+/// * `keywords_file_paths` - Path to the files containing the list of extensions and keywords to use.
 /// * `skip` - If true, skip the downloading of the repositories.
 /// * `count` - If true, compute statistics on the downloaded projects without deleting any file.
 /// * `overwrite` - If true, overwrite the log files if they exist.
 /// * `seed` - The seed used to shuffle the projects.
 /// * `logger` - The logger to use to display information about the progress of the program.
-///
-/// Downloads all github repositories from a list and keeps only the files that satisfy the following criteria:
-/// * Their extension is in the list of extensions provided in the command line arguments.
-/// * They contain a keyword related to floating point arithmetic.
-/// * They are not symbolic links.
-///
-/// Furthermore, all empty directories are removed. All downloaded repositories are logged in a CSV file to track progress
-/// and be able to resume the download if the program is interrupted. The name of the log file is the same as the input file
-/// with the extension ".project_log". Every file is also logged in a CSV file with the same name as the input file with the
-/// extension ".file_log".
-///
-/// The input (i.e. the file where the ids are stored) must be a valid CSV file where the first column is the id of the project,
-/// the second column is the full name of the project and the third column is the hash of the latest commit. Other columns are ignored.
-/// Ids are chosen in a random order from the file.
-///
-/// If the target directory does not exist, it will be created.
-///
-/// The tokens file must be a valid CSV file with one column named 'token' and where every line is a valid GitHub token
-///
-/// The lists of extensions and keywords needs to be stored in a JSON file. The extensions should be written without the period (`java` instead of `.java`).
-/// The file must have the following structure:
-///
-/// ```json
-/// {
-///     "extensions": {
-///         "ext1": ["kw11", "kw12", ...],
-///         "ext2": ["kw21", "kw22", ...],
-///         ...
-///     },
-///     "keywords": ["kw1", "kw2", ...]
-/// }
-/// ```
-///
-/// # Example
-///
-/// The following configuration file will download all the C, Java and TypeScript files that contain floating point types:
-///
-/// ```json
-/// {
-///     "extensions": {
-///         "c": [],
-///         "java": [],
-///         "ts": ["number"],
-///         ...
-///     },
-///     "keywords": ["float", "double"]
-/// }
-/// ```
-///
+/// * `thread` - The number of threads to use when not downloading and computing statistic locally instead.
+/// * `order` - The order in which the projects are processed.
 pub fn run(
     input_file_path: &str,
     projects_output_path: Option<&str>,
     files_output_path: Option<&str>,
     target: &str,
-    tokens_file: &str,
+    tokens_file: Option<&str>,
     keywords_file_paths: &[&str],
     skip: bool,
     count: bool,
@@ -223,16 +190,13 @@ pub fn run(
     seed: u64,
     logger: &Logger,
     thread: usize,
+    order: &str,
 ) -> Result<()> {
-    // Number of columns in the log files
-    const PROJECT_LOG_COLS: usize = 14;
-    const FILE_LOG_COLS: usize = 6;
-
     // Check if the token file is valid and load the tokens.
     let tokens: Vec<String> = if skip {
         (0..thread).map(|n| n.to_string()).collect()
     } else {
-        logger.log_tokens(tokens_file)?
+        logger.log_tokens(tokens_file.unwrap())? // safe unwrap
     };
 
     let input_file: DataFrame = logger.run_task("Loading input file", || {
@@ -245,7 +209,7 @@ pub fn run(
                 Field::new("latest_commit".into(), DataType::String),
             ])),
             Some(if skip {
-                vec!["id", "path"]
+                vec!["path"]
             } else {
                 vec!["id", "name", "latest_commit"]
             }),
@@ -254,25 +218,27 @@ pub fn run(
 
     let mut shuffled_idx: Vec<usize> = (0..input_file.height()).collect::<Vec<usize>>();
 
-    // Load the ids from the input file in random order.
-    logger.run_task("Loading project IDs in random order", || {
-        let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
-        shuffled_idx.shuffle(&mut rng);
-        Ok(())
-    })?;
+    if order == "random" {
+        // Load the ids from the input file in random order.
+        logger.run_task("Loading project IDs in random order", || {
+            let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
+            shuffled_idx.shuffle(&mut rng);
+            Ok(())
+        })?;
+    }
 
     let shuffled_rows = shuffled_idx.into_iter().map(|idx| {
         let row = input_file.get_row(idx).unwrap().0;
 
         if skip {
-            match (row[0].clone(), row[1].clone()) {
-                (AnyValue::UInt32(id), AnyValue::String(path)) => Ok((idx, id, path, None)),
+            match row[0].clone() {
+                AnyValue::String(path) => Ok((idx, None, path, None)),
                 _ => Err(idx),
             }
         } else {
             match (row[0].clone(), row[1].clone(), row[2].clone()) {
                 (AnyValue::UInt32(id), AnyValue::String(name), AnyValue::String(latest_commit)) => {
-                    Ok((idx, id, name, Some(latest_commit)))
+                    Ok((idx, Some(id), name, Some(latest_commit)))
                 }
                 _ => Err(idx),
             }
@@ -290,27 +256,42 @@ pub fn run(
 
         // Create subsubdirectories to avoid reaching the limit of 32k subdirectories on some filesystems.
         for i in 0..(n_proj / MAX_SUBDIRS + 1) {
-            create_dir(format!("{}/{}", target, i))?;
+            create_dir(format!("{target}/{i}"))?;
         }
     }
 
     // Open the log file for the projects or create it if it does not exist.
-    let default_project_log_path = format!("{}.project_log.csv", input_file_path);
+    let default_project_log_path = format!("{input_file_path}.project_log.csv");
     let project_log_path: &str = projects_output_path.unwrap_or(&default_project_log_path);
 
     // Load previous results if the skip flag is not set.
 
-    let previous_results: HashSet<u32> = logger.run_task("Resuming progress", || {
-        Ok(if overwrite || !Path::new(&project_log_path).exists() {
-            HashSet::<u32>::new()
-        } else {
-            let project_log_file = CSVFile::new(project_log_path, FileMode::Read)?;
-            let prev_res: HashSet<u32> = project_log_file.column::<u32>(0)?.into_iter().collect();
-            prev_res
-        })
-    })?;
+    let previous_results: HashSet<(Option<u32>, Option<String>)> =
+        logger.run_task("Resuming progress", || {
+            Ok(if overwrite || !Path::new(&project_log_path).exists() {
+                HashSet::<(Option<u32>, Option<String>)>::new()
+            } else {
+                let project_log_file: CSVFile = CSVFile::new(project_log_path, FileMode::Read)?;
+                let prev_res: HashSet<(Option<u32>, Option<String>)> = if skip {
+                    project_log_file
+                        .column::<String>(0)?
+                        .into_iter()
+                        .map(|s| (None, Some(s)))
+                        .collect()
+                } else {
+                    project_log_file
+                        .column::<u32>(0)?
+                        .into_iter()
+                        .map(|id| (Some(id), None))
+                        .collect()
+                };
+                prev_res
+            })
+        })?;
 
-    if !previous_results.is_empty() {
+    if previous_results.is_empty() {
+        info!("  No previously downloaded projects found, starting from scratch.",);
+    } else {
         info!(
             "  {} projects have already been downloaded",
             previous_results.len()
@@ -321,22 +302,42 @@ pub fn run(
         KeywordFiles::new().add_files(keywords_file_paths, true)
     })?;
 
+    info!(
+        "  {} languages found in {} keyword files.",
+        keyword_files.languages().len(),
+        keyword_files.len()
+    );
+    debug!("  Languages: {}", keyword_files.languages().join(", "));
+    debug!(
+        "  File extensions: {}",
+        keyword_files.extensions().join(", ")
+    );
+    debug!(
+        "  Regexes: {}",
+        keyword_files
+            .debug_regexes()
+            .into_iter()
+            .map(|(lang, regexes)| format!("{}:\n{}", lang, regexes.join("\n")))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
     let files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("files_with_{}", p))
+        .map(|p| format!("files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let loc_of_files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("loc_of_files_with_{}", p))
+        .map(|p| format!("loc_of_files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let words_of_files_with_kw_headers: String = keyword_files
         .paths
         .iter()
-        .map(|p| format!("words_of_files_with_{}", p))
+        .map(|p| format!("words_of_files_with_{p}"))
         .collect::<Vec<String>>()
         .join(",");
     let keyword_match_headers: String = keyword_files.paths.join(",");
@@ -353,28 +354,46 @@ pub fn run(
     )?;
 
     // If the file has no header, write the header.
-    let project_log_headers: [&str; PROJECT_LOG_COLS] = [
-        "id",
-        "path",
-        "name",
-        "latest_commit",
-        "files",
-        "loc",
-        "words",
-        "files_with_kw",
-        &files_with_kw_headers,
-        "loc_with_kw",
-        &loc_of_files_with_kw_headers,
-        "words_with_kw",
-        &words_of_files_with_kw_headers,
-        &keyword_match_headers,
-    ];
+    let project_log_headers: Vec<&str> = if skip {
+        [
+            "path",
+            "files",
+            "loc",
+            "words",
+            "files_with_kw",
+            &files_with_kw_headers,
+            "loc_with_kw",
+            &loc_of_files_with_kw_headers,
+            "words_with_kw",
+            &words_of_files_with_kw_headers,
+            &keyword_match_headers,
+        ]
+        .to_vec()
+    } else {
+        [
+            "id",
+            "path",
+            "name",
+            "latest_commit",
+            "files",
+            "loc",
+            "words",
+            "files_with_kw",
+            &files_with_kw_headers,
+            "loc_with_kw",
+            &loc_of_files_with_kw_headers,
+            "words_with_kw",
+            &words_of_files_with_kw_headers,
+            &keyword_match_headers,
+        ]
+        .to_vec()
+    };
 
     project_log_file.write_header(&project_log_headers)?;
 
     // Open the log file for the files or create it if it does not exist.
     // If the overwrite flag is set, the file is generated anew.
-    let default_file_log_path = format!("{}.file_log.csv", input_file_path);
+    let default_file_log_path = format!("{input_file_path}.file_log.csv");
     let file_log_path: &str = files_output_path.unwrap_or(&default_file_log_path);
     let mut file_log = CSVFile::new(
         file_log_path,
@@ -385,24 +404,30 @@ pub fn run(
         },
     )?;
 
-    let file_log_headers: [&str; FILE_LOG_COLS] = [
-        "id",
-        "name",
-        "language",
-        "loc",
-        "words",
-        &keyword_match_headers,
-    ];
+    let file_log_headers: Vec<&str> = if skip {
+        ["path", "language", "loc", "words", &keyword_match_headers].to_vec()
+    } else {
+        [
+            "id",
+            "name",
+            "language",
+            "loc",
+            "words",
+            &keyword_match_headers,
+        ]
+        .to_vec()
+    };
 
     file_log.write_header(&file_log_headers)?;
 
     // Iterate over the projects and collect metadata.
     let iter = Mutex::new(shuffled_rows);
 
-    info!("Starting download...\n");
+    info!("Starting download...");
 
     // Numbers of threads to be spawned.
     let n = tokens.len();
+    debug!("Spawning {n} threads for downloading and processing the repositories.");
 
     // Every thread comes with a sender channel.
     // The sender channel is used to send information about the downloaded repository back to the main thread.
@@ -429,27 +454,34 @@ pub fn run(
                     match next_item {
                         Some(row) => {
                             match row {
-                                Ok((row_nr, id, full_name, last_commit)) => {
+                                Ok((row_nr, id_opt, full_name, last_commit)) => {
                                     // Check if the project has already been downloaded.
                                     // If not, download it and send the information back to the main thread.
 
-                                    let project_path: String = match last_commit {
-                                        Some(commit) => format!(
+                                    let project_path: String = match (last_commit, id_opt) {
+                                        (Some(commit), Some(id)) => format!(
                                             "{}/{}/{}-{}",
                                             target,
                                             row_nr / MAX_SUBDIRS,
                                             id,
                                             commit
                                         ),
-                                        None => full_name.to_string(),
+                                        (None, None) => full_name.to_string(),
+                                        _ => unreachable!(),
                                     };
 
-                                    if !previous_results.contains(&id)
-                                        && (!skip || Path::new(&project_path).exists())
+                                    let path_opt = if skip {
+                                        Some(project_path.clone())
+                                    } else {
+                                        id_opt.map(|id| id.to_string())
+                                    };
+
+                                    if (!skip || Path::new(&project_path).exists())
+                                        && !previous_results.contains(&(id_opt, path_opt))
                                     {
                                         match download_repo(
                                             t.as_str(),
-                                            id,
+                                            id_opt,
                                             &project_path,
                                             full_name,
                                             last_commit,
@@ -470,7 +502,7 @@ pub fn run(
                                 }
                                 Err(row_nr) => {
                                     let _ = my_tx
-                                        .send(Some(Err(anyhow!("Could not parse row {}", row_nr))));
+                                        .send(Some(Err(anyhow!("Could not parse row {row_nr}"))));
                                 }
                             }
                         }
@@ -500,9 +532,9 @@ pub fn run(
                 Some(msg_content) => {
                     let (project_msg, files_msg) = msg_content?;
 
-                    writeln!(&mut project_log_file, "{}", project_msg).unwrap();
+                    writeln!(&mut project_log_file, "{project_msg}")?;
                     if !files_msg.trim().is_empty() {
-                        write!(&mut file_log, "{}", files_msg).unwrap();
+                        write!(&mut file_log, "{files_msg}")?;
                     }
                     progress.inc(1);
                 }
@@ -519,7 +551,7 @@ pub fn run(
         progress.finish();
         Ok(())
     })
-    .map_err(|e| anyhow!("Thread panicked: {:?}", e))?
+    .map_err(|e| anyhow!("Thread panicked: {e:?}"))?
 }
 
 /// Downloads a GitHub repository and filters the files according to the provided extensions and keywords.
@@ -539,7 +571,7 @@ pub fn run(
 /// # Arguments
 ///
 /// * `token` - The GitHub token to use for the request.
-/// * `id` - The id of the project.
+/// * `id_opt` - The id of the project, if the project is downloaded from GitHub.
 /// * `project_path` - The path to the directory where the repository is/will be downloaded.
 /// * `full_name` - The full name of the project.
 /// * `last_commit` - The hash of the last commit of the project.
@@ -585,7 +617,7 @@ pub fn run(
 ///
 fn download_repo(
     token: &str,
-    id: u32,
+    id_opt: Option<u32>,
     project_path: &str,
     full_name: &str,
     last_commit: Option<&str>,
@@ -595,6 +627,12 @@ fn download_repo(
     delete: bool,
 ) -> Result<(String, String)> {
     if !skip {
+        let id = id_opt.with_context(|| {
+            format!(
+                "Project {} does not have an id, cannot be downloaded",
+                full_name
+            )
+        })?;
         let http_client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(None)
@@ -604,7 +642,7 @@ fn download_repo(
 
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token))?,
+            HeaderValue::from_str(&format!("Bearer {token}"))?,
         );
 
         headers.insert(USER_AGENT, HeaderValue::from_static("Scyros"));
@@ -613,8 +651,7 @@ fn download_repo(
             "https://api.github.com/repositories/{}/zipball/{}",
             id,
             last_commit.with_context(|| format!(
-                "Last commit not found for project {} (id: {})",
-                full_name, id
+                "Last commit not found for project {full_name} (id: {id})"
             ))?
         );
 
@@ -639,8 +676,7 @@ fn download_repo(
                 .send()
                 .with_context(|| {
                     format!(
-                    "Could not download repository {} (id: {}), error while sending HTTP request",
-                    full_name, id
+                    "Could not download repository {full_name} (id: {id}), error while sending HTTP request"
                 )
                 });
             if response_res.is_err() {
@@ -649,8 +685,7 @@ fn download_repo(
                     sleep(retry_delay(attempts));
                 } else {
                     response_res = Err(anyhow!(
-                        "Could not download repository {} (id: {}), maximum number of retries reached",
-                        full_name, id
+                        "Could not download repository {full_name} (id: {id}), maximum number of retries reached"
                     ));
                 }
             }
@@ -666,7 +701,7 @@ fn download_repo(
         }
 
         // Create output file
-        let mut out: File = open_file(&format!("{}.zip", project_path), FileMode::Overwrite)?;
+        let mut out: File = open_file(format!("{project_path}.zip"), FileMode::Overwrite)?;
 
         // Stream response to file
         match copy(&mut response, &mut out) {
@@ -680,30 +715,42 @@ fn download_repo(
         }
 
         zip_extract(
-            &format!("{}.zip", project_path).into(),
+            &format!("{project_path}.zip").into(),
             &Path::new(project_path).to_path_buf(),
         )
-        .with_context(|| format!("Failed to extract archive to {}", project_path))?;
+        .with_context(|| format!("Failed to extract archive to {project_path}"))?;
 
-        delete_file(format!("{}.zip", project_path), true)?;
+        delete_file(format!("{project_path}.zip"), true)?;
     }
 
     if delete {
-        ShellCommand::Find {
-            builder: FindCommand::new(project_path)
-                .file_type(FileType::File)
-                .not()
-                .file_extensions(keywords_files.extensions_to_language.keys())
-                .delete(),
+        for entry in WalkDir::new(project_path)
+            .contents_first(true)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                let ext = e.path().extension().and_then(|s| s.to_str());
+                !matches!(ext, Some(ext) if keywords_files.extensions_to_language.contains_key(ext))
+            })
+        {
+            delete_file(entry.path(), false)?;
         }
-        .run();
+        // Delete symbolic links
+        for entry in WalkDir::new(project_path)
+            .contents_first(true)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_symlink())
+        {
+            let path = entry.path();
 
-        ShellCommand::Find {
-            builder: FindCommand::new(project_path)
-                .file_type(FileType::SymbolicLink)
-                .delete(),
+            if path.is_dir() {
+                delete_dir(path, false)?;
+            } else {
+                delete_file(path, false)?;
+            }
         }
-        .run();
     }
 
     let mut dir_loc_before_filter: usize = 0;
@@ -722,96 +769,105 @@ fn download_repo(
     // Remove all files that do not contain the keywords.
     // Repeat the process for every extension.
     for (ext, lang) in keywords_files.extensions_to_language.iter() {
-        let file_list = ShellCommand::Find {
-            builder: FindCommand::new(project_path)
-                .file_type(FileType::File)
-                .file_extension(ext),
-        }
-        .run();
+        let file_list: Vec<PathBuf> = WalkDir::new(project_path)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                let path = e.path();
+                path.extension().is_some() && path.to_str().is_some_and(|s| s.ends_with(ext))
+            })
+            .map(|e| e.into_path())
+            .collect();
 
-        for path in file_list.lines() {
-            match &load_file(path, 1024 * 1024 * 1024) {
-                Ok(file) => {
-                    let words = match file {
-                        Ok(content) => word_counter.count_matches_in_text(content),
-                        Err(_) => word_counter.count_matches_in_file(path)?,
-                    };
+        for path in file_list {
+            if let Ok(file) = &load_file(&path, 1024 * 1024 * 1024) {
+                let words = match file {
+                    Ok(content) => word_counter.count_matches_in_text(content),
+                    Err(_) => word_counter.count_matches_in_file(&path)?,
+                };
 
-                    let loc = match file {
-                        Ok(content) => content.lines().count(),
-                        Err(_) => file_lines_count(path)?,
-                    };
+                let loc = match file {
+                    Ok(content) => content.lines().count(),
+                    Err(_) => file_lines_count(&path)?,
+                };
 
-                    let matches: Vec<usize> = match file {
-                        Ok(content) => keywords_files.count_matches_in_text(lang, content),
-                        Err(_) => keywords_files.count_matches_in_file(lang, path)?,
-                    };
+                let matches: Vec<usize> = match file {
+                    Ok(content) => keywords_files.count_matches_in_text(lang, content),
+                    Err(_) => keywords_files.count_matches_in_file(lang, &path)?,
+                };
 
-                    dir_files_before_filter += 1;
-                    dir_loc_before_filter += loc;
-                    dir_words_before_filter += words;
+                dir_files_before_filter += 1;
+                dir_loc_before_filter += loc;
+                dir_words_before_filter += words;
 
-                    if matches.iter().any(|m| m > &0) {
-                        dir_files_after_filter_any += 1;
-                        dir_loc_after_filter_any += loc;
-                        dir_words_after_filter_any += words;
+                if matches.iter().any(|m| m > &0) {
+                    dir_files_after_filter_any += 1;
+                    dir_loc_after_filter_any += loc;
+                    dir_words_after_filter_any += words;
 
-                        for i in 0..keywords_files.len() {
-                            if matches[i] > 0 {
-                                dir_files_after_filter[i] += 1;
-                                dir_loc_after_filter[i] += loc;
-                                dir_words_after_filter[i] += words;
-                            }
+                    for i in 0..keywords_files.len() {
+                        if matches[i] > 0 {
+                            dir_files_after_filter[i] += 1;
+                            dir_loc_after_filter[i] += loc;
+                            dir_words_after_filter[i] += words;
                         }
-
-                        for (i, match_count) in matches.iter().enumerate() {
-                            dir_matches[i] += match_count;
-                        }
-
-                        // Remove commas from the filename to avoid issues with the CSV format.
-
-                        writeln!(
-                            &mut files_output,
-                            "{},{},{},{},{},{}",
-                            id,
-                            path.replace(",", "-was_comma-")
-                                .replace("\"", "-was_quote-"),
-                            lang,
-                            loc,
-                            words,
-                            matches
-                                .iter()
-                                .map(|m| m.to_string())
-                                .collect::<Vec<String>>()
-                                .join(",")
-                        )?;
-                    } else if delete {
-                        delete_file(path, false)?
                     }
+
+                    for (i, match_count) in matches.iter().enumerate() {
+                        dir_matches[i] += match_count;
+                    }
+
+                    // Remove commas from the filename to avoid issues with the CSV format.
+
+                    let path_str = &path
+                        .to_str()
+                        .with_context(|| {
+                            format!("Could not convert path to string: {}", &path.display())
+                        })?
+                        .replace(",", "-was_comma-")
+                        .replace("\"", "-was_quote-");
+                    writeln!(
+                        &mut files_output,
+                        "{}{},{},{},{},{}",
+                        id_opt.map_or_else(String::new, |i| format!("{},", i)),
+                        path_str,
+                        lang,
+                        loc,
+                        words,
+                        matches
+                            .iter()
+                            .map(|m| m.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    )?;
+                } else if delete {
+                    delete_file(&path, false)?
                 }
-                // When the file contains non-ASCII characters, opening it fails.
-                // In this case, we ignore the file and continue.
-                Err(_) => (),
             }
         }
     }
 
     if delete {
-        ShellCommand::Find {
-            builder: FindCommand::new(project_path)
-                .file_type(FileType::Directory)
-                .empty()
-                .delete(),
-        }
-        .run();
+        delete_empty_dirs(project_path)?
     }
 
     let project_output = format!(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
-        id,
+        "{}{},{}{}{},{},{},{},{},{},{},{},{},{}",
+        id_opt.map_or_else(String::new, |i| format!("{i},")),
         project_path,
-        full_name,
-        last_commit.unwrap_or_default(),
+        if skip {
+            "".to_string()
+        } else {
+            format!("{full_name},")
+        },
+        if skip {
+            "".to_string()
+        } else {
+            let last_commit = last_commit
+                .with_context(|| format!("Last commit not found for project {full_name}"))?;
+            format!("{last_commit},")
+        },
         dir_files_before_filter,
         dir_loc_before_filter,
         dir_words_before_filter,
@@ -896,13 +952,12 @@ mod tests {
         count: bool,
         skip: bool,
     ) -> Result<()> {
-        let input_file: String = format!("{}/{}", TEST_DATA, input);
-        let output_file_project: String = format!("{}.project_log.csv", input_file);
-        let output_file_file: String = format!("{}.file_log.csv", input_file);
+        let input_file: String = format!("{TEST_DATA}/{input}");
+        let output_file_project: String = format!("{input_file}.project_log.csv");
+        let output_file_file: String = format!("{input_file}.file_log.csv");
         ensure!(
             std::path::Path::new(&input_file).exists(),
-            "Input file {} does not exist",
-            input_file
+            "Input file {input_file} does not exist"
         );
 
         // Remove the output files if they exist.
@@ -910,7 +965,7 @@ mod tests {
         delete_file(&output_file_project, true)?;
 
         let target_def: String = match target {
-            Some(t) => format!("target/tests/{}", t),
+            Some(t) => format!("target/tests/{t}"),
             None => String::new(),
         };
 
@@ -924,8 +979,7 @@ mod tests {
         for keywords_file in keywords_files {
             ensure!(
                 std::path::Path::new(keywords_file).exists(),
-                "Keywords file {} does not exist",
-                keywords_file
+                "Keywords file {keywords_file} does not exist"
             );
         }
 
@@ -934,7 +988,7 @@ mod tests {
             None,
             None,
             &target_def,
-            &tokens_file,
+            Some(&tokens_file),
             keywords_files,
             skip,
             count,
@@ -942,12 +996,13 @@ mod tests {
             0,
             test_logger(),
             2,
+            "random",
         )?;
 
         assert_eq!(
             CSVFile::new(&output_file_project, FileMode::Read)?.indexed_lines::<String>(0)?,
             CSVFile::new(
-                &format!("{}/{}.project_log.csv.expected", TEST_DATA, input),
+                &format!("{TEST_DATA}/{input}.project_log.csv.expected"),
                 FileMode::Read
             )?
             .indexed_lines(0)?
@@ -982,6 +1037,17 @@ mod tests {
                 "tests/data/keywords/fp_others.json",
                 "tests/data/keywords/std_math.json",
             ],
+            true,
+            true,
+        )
+    }
+
+    #[test]
+    fn download_local() -> Result<()> {
+        download_test(
+            "to_download_local_c.csv",
+            None,
+            &["tests/data/keywords/c.json"],
             true,
             true,
         )

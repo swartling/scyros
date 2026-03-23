@@ -2,9 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 pub struct CandidateEntry {
     pub matches: usize,
-    // Not sure if I want matches here as well or just in match_histogram.
-    //The benefit of having it here is that I can easily find what bucket the candidate is in in the histogram.
-    //The downside is that I have to update it here O(log n) when I update it in the histogram.
     pub length: usize,
     pub last_token_seen_pos: usize,
 }

@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Collect pull requests of GitHub projects. The input file must be a valid CSV file where one of the columns (\"name\") contains the full names of the projects, and another one (\"id\") contains their ids.
-//! The program sends requests to the GitHub API to collect metadata about the pull requests of the projects in the input file, as well as the comments in each pull request.
-//! Projects are chosen randomly without replacement. The metadata of the pull requests is saved in a new CSV file. If the program is interrupted, it
-//! can be restarted and will continue from where it left off. The comments of each pull request are saved in separate CSV files in the target directory.
-//! By default, the name of the output file is the same as the input file with the suffix '.pulls.csv'.
+#![doc = include_str!("../docs/pull_request.md")]
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -47,13 +43,7 @@ use tracing::info;
 pub fn cli() -> Command {
     Command::new("pr")
         .about("Collect pull requests of GitHub projects")
-        .long_about(
-            "Collect pull requests of GitHub projects. The input file must be a valid CSV file where one of the columns (\"name\") contains the full names of the projects, and another one (\"id\") contains their ids.\n\
-            The program sends requests to the GitHub API to collect metadata about the pull requests of the projects in the input file, as well as the comments in each pull request.\n\
-            Projects are chosen randomly without replacement. The metadata of the pull requests is saved in a new CSV file.\nIf the program is interrupted, it \
-            can be restarted and will continue from where it left off.\n The comments of each pull request are saved in separate CSV files in the target directory.\n\
-            By default, the name of the output file is the same as the input file with the suffix '.pulls.csv'.\n"
-        )
+        .long_about(include_str!("../docs/pull_request.md"))
         .author("Andrea Gilot <andrea.gilot@it.uu.se>")
         .disable_version_flag(true)
         .arg(
@@ -130,29 +120,7 @@ pub fn cli() -> Command {
         )
 }
 
-/// Collects pull requests about GitHub projects.
-///
-/// The input must be a valid CSV file where the first column is the id of the project and the second column is the full name of the project.
-/// Other columns are ignored. Such a file can be obtained by running the random-id-sampling program. Ids are chosen in a random order from the file.
-///
-/// The output has the following columns:
-/// * id: the id of the project.
-/// * name: the full name of the project.
-/// * pr_number: the pull request number.
-/// * file_path: the path of the file storing the contents of the pull request.
-/// * user: the user who created the pull request.
-/// * user_id: the id of the user who created the pull request.
-/// * comments: the number of comments on the pull request.
-/// * created_at: the timestamp of the creation of the pull request.
-/// * updated_at: the timestamp of the last update of the pull request.
-/// * closed_at: the timestamp of the closing of the pull request.
-/// * merged_at: the timestamp of the merging of the pull request.
-/// * draft: whether the pull request is a draft.
-/// * state: the state of the pull request.
-/// * commits: the number of commits in the pull request.
-/// * additions: the number of additions in the pull request.
-/// * deletions: the number of deletions in the pull request.
-/// * changed_files: the number of changed files in the pull request.
+/// Entry point of the program.
 ///
 /// # Arguments
 ///
@@ -304,7 +272,7 @@ pub fn run(
                     if let Ok(pages) = scrape_pages(
                         &gh,
                         &|per_page, page| {
-                            format!("https://api.github.com/repositories/{}/pulls?state=all&per_page={}&page={}", id, per_page, page)
+                            format!("https://api.github.com/repositories/{id}/pulls?state=all&per_page={per_page}&page={page}")
                         },
                         &|json| {
                             let mut pr_metadata: PRMetadata =
@@ -324,14 +292,14 @@ pub fn run(
                                 obj.to_csv((id, full_name.to_string()))
                             )?;
                         }
-                        write!(&mut output_file, "{}", pull_requests)?;
+                        write!(&mut output_file, "{pull_requests}")?;
                     }
                     progress_bar.inc(1);
                     n -= 1;
                 }
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx)
+                bail!("Could not parse row {idx} in the input file")
             }
         }
     }
@@ -663,7 +631,7 @@ fn scrape_pr_comments(gh: &Github, repo_id: u32, pr: &PRMetadata) -> Result<()> 
         }
     }
 
-    write!(&mut output_file, "{}", file_content)?;
+    write!(&mut output_file, "{file_content}")?;
     Ok(())
 }
 
@@ -689,37 +657,37 @@ mod tests {
         let tokens_file: String = "ghtokens.csv".to_string();
 
         run(
-            &input_file,
+            input_file,
             Some(&output_file.to_string()),
             &tokens_file,
             0,
             false,
             "id",
             "name",
-            &target,
+            target,
             None,
             test_logger(),
         )?;
 
         for pr_path in pr_paths {
             let pr_discussion = open_csv(pr_path, None, None)?;
-            let pr_discussion_expected = open_csv(&format!("{}.expected", pr_path), None, None)?;
+            let pr_discussion_expected = open_csv(&format!("{pr_path}.expected"), None, None)?;
             assert_eq!(pr_discussion, pr_discussion_expected);
             delete_file(pr_path, false)?;
         }
 
-        let output_df = open_csv(&output_file, None, None)?;
-        let expected_df = open_csv(&format!("{}.expected", output_file), None, None)?;
+        let output_df = open_csv(output_file, None, None)?;
+        let expected_df = open_csv(&format!("{output_file}.expected"), None, None)?;
         assert_eq!(expected_df, output_df);
-        delete_file(&output_file, false)
+        delete_file(output_file, false)
     }
 
     #[test]
     fn test_pr_empty_output() -> Result<()> {
         test_phase_pull_request(
-            &format!("{}/repos.csv", TEST_DATA),
-            &format!("{}/repos.csv.pulls.csv", TEST_DATA),
-            &format!("{}/prs", TEST_DATA),
+            &format!("{TEST_DATA}/repos.csv"),
+            &format!("{TEST_DATA}/repos.csv.pulls.csv"),
+            &format!("{TEST_DATA}/prs"),
             &vec![
                 format!("{}/prs/5983/1128315983/1128315983_1.csv", TEST_DATA),
                 format!("{}/prs/5983/1128315983/1128315983_2.csv", TEST_DATA),
@@ -729,25 +697,25 @@ mod tests {
 
     #[test]
     fn test_pr_with_output() -> Result<()> {
-        let input_path: String = format!("{}/repos2.csv", TEST_DATA);
+        let input_path: String = format!("{TEST_DATA}/repos2.csv");
         std::fs::copy(
-            &format!("{}/repos_complete.csv.expected", TEST_DATA),
-            &format!("{}/repos_complete.csv", TEST_DATA),
+            format!("{TEST_DATA}/repos_complete.csv.expected"),
+            format!("{TEST_DATA}/repos_complete.csv"),
         )?;
         test_phase_pull_request(
             &input_path,
-            &format!("{}/repos_complete.csv", TEST_DATA),
-            &format!("{}/prs2", TEST_DATA),
+            &format!("{TEST_DATA}/repos_complete.csv"),
+            &format!("{TEST_DATA}/prs2"),
             &vec![],
         )
     }
 
     #[test]
     fn test_pr_with_partial_output() -> Result<()> {
-        let input_path: String = format!("{}/repos3.csv", TEST_DATA);
-        let output_path: String = format!("{}/repos_partial_output.csv.temp", TEST_DATA);
+        let input_path: String = format!("{TEST_DATA}/repos3.csv");
+        let output_path: String = format!("{TEST_DATA}/repos_partial_output.csv.temp");
         std::fs::copy(
-            &format!("{}/repos_partial_output.csv", TEST_DATA),
+            format!("{TEST_DATA}/repos_partial_output.csv"),
             &output_path,
         )?;
         ensure!(std::path::Path::new(&output_path).exists());
@@ -755,7 +723,7 @@ mod tests {
         test_phase_pull_request(
             &input_path,
             &output_path,
-            &format!("{}/prs3", TEST_DATA),
+            &format!("{TEST_DATA}/prs3"),
             &vec![],
         )
     }
@@ -763,9 +731,9 @@ mod tests {
     #[test]
     fn test_language_scraper_inexistent() -> Result<()> {
         test_phase_pull_request(
-            &format!("{}/invalid.csv", TEST_DATA),
-            &format!("{}/invalid.csv.pulls.csv", TEST_DATA),
-            &format!("{}/prs_invalid", TEST_DATA),
+            &format!("{TEST_DATA}/invalid.csv"),
+            &format!("{TEST_DATA}/invalid.csv.pulls.csv"),
+            &format!("{TEST_DATA}/prs_invalid"),
             &vec![],
         )
     }

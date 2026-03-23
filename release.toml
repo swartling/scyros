@@ -1,0 +1,3 @@
+publish = false
+tag-prefix = ""
+tag-name = "v{{version}}"

@@ -23,4 +23,3 @@ pub mod inverted_index;
 pub mod json;
 pub mod logger;
 pub mod regex;
-pub mod shell_commands;

@@ -23,6 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::path::Path;
 use tracing::warn;
 
 use regex::bytes::Regex;
@@ -58,17 +59,15 @@ impl Matcher {
     ///
     /// # Type Parameters
     /// * `T` - A type that can be converted to a string.
-    /// * `I` - An iterable type that yields items of type `T`.
     ///
     ///  # Returns
     ///  A regex pattern looking for any of the keywords or an error if the pattern is invalid.
-    pub fn keywords_matcher<I, T>(
-        keywords: I,
+    pub fn keywords_matcher<T>(
+        keywords: impl IntoIterator<Item = T>,
         case_sensitive: bool,
         whole_words: bool,
     ) -> Result<Self>
     where
-        I: IntoIterator<Item = T>,
         T: ToString,
     {
         let joined_keywords = keywords
@@ -78,7 +77,7 @@ impl Matcher {
             .join("|");
         if !joined_keywords.is_empty() {
             let new_pattern: String = if whole_words {
-                format!(r"\b(?:{})\b", joined_keywords)
+                format!(r"\b(?:{joined_keywords})\b")
             } else {
                 joined_keywords
             };
@@ -86,7 +85,7 @@ impl Matcher {
             let new_pattern_with_sensitivity: String = if case_sensitive {
                 new_pattern
             } else {
-                format!("(?i){}", new_pattern)
+                format!("(?i){new_pattern}")
             };
             Ok(Self {
                 regex: Some(Regex::new(&new_pattern_with_sensitivity)?),
@@ -160,10 +159,12 @@ impl Matcher {
     /// # Arguments
     ///
     /// * `path` - The path to the file to search for the pattern.
-    pub fn count_matches_in_file(&self, path: &str) -> Result<usize> {
+    pub fn count_matches_in_file(&self, path: impl AsRef<Path>) -> Result<usize> {
+        let path_ref = path.as_ref();
         let mut count: usize = 0;
-        for l in BufReader::new(open_file(path, FileMode::Read)?).lines() {
-            let line = l.with_context(|| format!("Could not read lines from {}", path))?;
+        for l in BufReader::new(open_file(path_ref, FileMode::Read)?).lines() {
+            let line =
+                l.with_context(|| format!("Could not read lines from {}", path_ref.display()))?;
             count += self.count_matches_in_text(line.as_bytes());
         }
         Ok(count)
@@ -201,12 +202,12 @@ pub fn count_text_lines(text: &[u8]) -> usize {
 ///  "languages": [
 ///    {
 ///      "name": "LanguageName",
-///      "extensions": [".ext1", ".ext2", ...],
-///      "keywords": ["localKeyword1", "localKeyword2", ...]
+///      "extensions": [".ext1", ".ext2", ...],     // optional
+///      "keywords": ["localKeyword1", "localKeyword2", ...]    // optional
 ///    },
 ///    ...
 ///  ]
-///  "keywords": ["globalKeyword1", "globalKeyword2", ...]
+///  "keywords": ["globalKeyword1", "globalKeyword2", ...]      // optional
 /// }
 /// ```
 /// The "languages" field contains an array of programming languages, each with a name, a list of file extensions, and a list of local keywords, i.e.,
@@ -250,6 +251,36 @@ impl KeywordFiles {
     /// Returns the number of keyword files in the collection
     pub fn len(&self) -> usize {
         self.paths.len()
+    }
+
+    /// Returns the list of languages for which there are matchers in the collection
+    pub fn languages(&self) -> Vec<String> {
+        self.matchers.keys().cloned().collect()
+    }
+
+    /// Returns the list of file extensions for which there are matchers in the collection
+    pub fn extensions(&self) -> Vec<String> {
+        self.extensions_to_language.keys().cloned().collect()
+    }
+
+    pub fn debug_regexes(&self) -> HashMap<String, Vec<String>> {
+        self.matchers
+            .iter()
+            .map(|(lang, matchers)| {
+                (
+                    lang.clone(),
+                    matchers
+                        .iter()
+                        .map(|m| {
+                            m.regex
+                                .as_ref()
+                                .map(|r| r.as_str().to_string())
+                                .unwrap_or("None".to_string())
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
 
     /// Checks if there are no keyword files in the collection
@@ -302,31 +333,43 @@ impl KeywordFiles {
         let cat1 = "languages";
         let languages = categories
             .get(cat1)
-            .with_context(|| format!("Keyword file {} does not contain a {} field", path, cat1))?;
+            .with_context(|| format!("Keyword file {path} does not contain a {cat1} field"))?;
 
         for l in languages.members() {
-            let language = json_to_map(l);
+            let (name, extensions, keywords) = if l.is_string() {
+                (
+                    l.as_str()
+                        .with_context(|| "Language name is not a string")?,
+                    HashSet::new(),
+                    HashSet::new(),
+                )
+            } else {
+                let language = json_to_map(l);
 
-            let name: &str = language
-                .get("name")
-                .with_context(|| format!("Keyword file {} contains a language with no name", path))?
-                .as_str()
-                .with_context(|| anyhow!("Language name is not a string"))?;
+                let name: &str = language
+                    .get("name")
+                    .with_context(|| {
+                        format!("Keyword file {path} contains a language with no name")
+                    })?
+                    .as_str()
+                    .with_context(|| anyhow!("Language name is not a string"))?;
 
-            let extensions: HashSet<String> = match language.get("extensions") {
-                Some(ext) => json_to_set(ext),
-                None => {
-                    if warning {
-                        warn!("Language {} in {} has no extensions field", name, path);
+                let extensions: HashSet<String> = match language.get("extensions") {
+                    Some(ext) => json_to_set(ext),
+                    None => {
+                        if warning {
+                            warn!("Language {} in {} has no extensions field", name, path);
+                        }
+                        HashSet::new()
                     }
-                    HashSet::new()
-                }
-            };
+                };
 
-            let keywords: HashSet<String> = language
-                .get("keywords")
-                .map(|json| json_to_set(json))
-                .unwrap_or_default();
+                let keywords: HashSet<String> = language
+                    .get("keywords")
+                    .map(|json| json_to_set(json))
+                    .unwrap_or_default();
+                (name, extensions, keywords)
+            };
 
             for ext in extensions {
                 match extensions_to_language.get(&ext) {
@@ -394,9 +437,13 @@ impl KeywordFiles {
     ///
     /// # Returns
     /// A vector containing the number of matches for each matcher of the given language or an error if the file could not be processed.
-    pub fn count_matches_in_file(&self, lang: &str, path: &str) -> Result<Vec<usize>> {
+    pub fn count_matches_in_file(&self, lang: &str, path: impl AsRef<Path>) -> Result<Vec<usize>> {
+        let path_ref = path.as_ref();
         match self.matchers.get(lang) {
-            Some(m) => m.iter().map(|m| m.count_matches_in_file(path)).collect(),
+            Some(m) => m
+                .iter()
+                .map(|m| m.count_matches_in_file(path_ref))
+                .collect(),
             None => Ok(vec![0, self.paths.len()]),
         }
     }

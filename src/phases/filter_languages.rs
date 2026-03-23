@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![doc = include_str!("../docs/filter_languages.md")]
+
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::vec;
@@ -30,11 +32,7 @@ use crate::utils::{dataframes, fs::*};
 pub fn cli() -> Command {
     Command::new("filter_languages")
         .about("Filter out projects that do not contain any code written in a programming language from a list provided by the user.")
-        .long_about(
-            "Filter out projects that do not contain any code written in a programming language from a list provided by the user.\n
-            By default, the name of the output file is the same as the input file with '.filtered_lang.csv' appended.\n
-            
-            The list of languages is provided in a JSON file. "
+        .long_about(include_str!("../docs/filter_languages.md")
         )
         .disable_version_flag(true)
         .arg(
@@ -59,7 +57,7 @@ pub fn cli() -> Command {
                 .long("languages")
                 .alias("lang")
                 .value_name("LANGUAGES.json")
-                .help("Path to the json file storing the languages to keep.")
+                .help("Path to the json file storing the languages to keep with the following format: \n{\n    \"languages\": [\"lang1\", \"lang2\", ...]\n}\n")
                 .required(true)
         )
         .arg(
@@ -81,8 +79,7 @@ pub fn cli() -> Command {
         )
 }
 
-/// Filters out projects that do not contain any code written in a programming language from a list provided by the user
-/// in a JSON file.
+/// Entrypoint of the program
 ///
 /// # Arguments
 ///
@@ -104,7 +101,7 @@ pub fn run(
     no_output: bool,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path = format!("{}.filtered_lang.csv", input_path);
+    let default_output_path = format!("{input_path}.filtered_lang.csv");
     let output_path = output_path.unwrap_or(&default_output_path);
 
     check_path(input_path)?;
@@ -244,8 +241,8 @@ mod tests {
 
     #[test]
     fn test_filter_languages() -> Result<()> {
-        let input_path = format!("{}/filter_languages.csv", TEST_DATA);
-        let default_output_path = format!("{}.filtered_lang.csv", input_path);
+        let input_path = format!("{TEST_DATA}/filter_languages.csv");
+        let default_output_path = format!("{input_path}.filtered_lang.csv");
         let language_path = "tests/data/keywords/scala_float.json";
 
         delete_file(&default_output_path, true)?;
@@ -258,7 +255,7 @@ mod tests {
             test_logger(),
         )?;
 
-        let expected_df = open_csv(&format!("{}.expected", default_output_path), None, None)?;
+        let expected_df = open_csv(&format!("{default_output_path}.expected"), None, None)?;
         let output_df = open_csv(&default_output_path, None, None)?;
 
         ensure!(

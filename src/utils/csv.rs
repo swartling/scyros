@@ -190,7 +190,7 @@ impl CSVFile {
                 .and_then(|entry| {
                     entry
                         .parse::<T>()
-                        .map_err(|_| anyhow!("Could not parse record {}", line))
+                        .map_err(|_| anyhow!("Could not parse record {line}"))
                 })
         })
     }
@@ -348,25 +348,25 @@ mod tests {
         assert_eq!(indexed_lines.len(), 4);
         assert_eq!(
             indexed_lines
-                .get(&"a".to_string())
+                .get("a")
                 .with_context(|| "Could not find index 'a'")?,
             "0,a,1"
         );
         assert_eq!(
             indexed_lines
-                .get(&"b".to_string())
+                .get("b")
                 .with_context(|| "Could not find index 'b'")?,
             "1,b,0"
         );
         assert_eq!(
             indexed_lines
-                .get(&"c".to_string())
+                .get("c")
                 .with_context(|| "Could not find index 'c'")?,
             "2,c,1"
         );
         assert_eq!(
             indexed_lines
-                .get(&"d".to_string())
+                .get("d")
                 .with_context(|| "Could not find index 'd'")?,
             "3,d,0"
         );

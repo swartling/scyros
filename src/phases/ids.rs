@@ -247,18 +247,14 @@ pub fn run(
             let mut attempts = 0;
 
             let mut request: Result<JsonValue> =
-                Err(anyhow!("Did not send any request yet: ID {}", first_id));
+                Err(anyhow!("Did not send any request yet: ID {first_id}"));
             while request.is_err() && attempts < MAX_RETRIES {
                 request = gh
                     .request(&format!(
-                        "https://api.github.com/repositories?since={}",
-                        first_id
+                        "https://api.github.com/repositories?since={first_id}"
                     ))
                     .with_context(|| {
-                        format!(
-                            "Could not send the request to the Github API: ID {}",
-                            first_id
-                        )
+                        format!("Could not send the request to the Github API: ID {first_id}")
                     });
                 attempts += 1;
             }
@@ -298,17 +294,17 @@ pub fn run(
 
                 // Write the response to the file.
 
-                write!(&mut output_file, "{}", builder)
-                    .with_context(|| format!("Could not write to file {}", output_path))?;
+                write!(&mut output_file, "{builder}")
+                    .with_context(|| format!("Could not write to file {output_path}"))?;
             }
             // Handle "Not Found" error or unknown response format.
             _ => {
                 if !request.has_key("message")
                     || request["message"].as_str().with_context(|| {
-                        format!("Could not parse message as string in {}", request)
+                        format!("Could not parse message as string in {request}")
                     })? != "Not Found"
                 {
-                    bail!("Unknown response format: {} ", request)
+                    bail!("Unknown response format: {request} ")
                 }
             }
         }
@@ -383,9 +379,9 @@ mod tests {
 
     #[test]
     fn test_random_ids() -> Result<()> {
-        let id_half = format!("{}/id_random_1.csv", TEST_DATA);
-        let id_full = format!("{}/id_random_2.csv", TEST_DATA);
-        let id_force = format!("{}/id_random_3.csv", TEST_DATA);
+        let id_half = format!("{TEST_DATA}/id_random_1.csv");
+        let id_full = format!("{TEST_DATA}/id_random_2.csv");
+        let id_force = format!("{TEST_DATA}/id_random_3.csv");
 
         delete_file(&id_half, true)?;
         delete_file(&id_full, true)?;
@@ -464,9 +460,9 @@ mod tests {
 
     #[test]
     fn test_linear_ids() -> Result<()> {
-        let id_half = format!("{}/id_linear_1.csv", TEST_DATA);
-        let id_full = format!("{}/id_linear_2.csv", TEST_DATA);
-        let id_force = format!("{}/id_linear_3.csv", TEST_DATA);
+        let id_half = format!("{TEST_DATA}/id_linear_1.csv");
+        let id_full = format!("{TEST_DATA}/id_linear_2.csv");
+        let id_force = format!("{TEST_DATA}/id_linear_3.csv");
 
         delete_file(&id_half, true)?;
         delete_file(&id_full, true)?;

@@ -94,7 +94,7 @@ pub fn run(
     no_output: bool,
     logger: &Logger,
 ) -> Result<()> {
-    let default_output_path = format!("{}.non-forks.csv", input_path);
+    let default_output_path = format!("{input_path}.non-forks.csv");
     let output_path = output_path.unwrap_or(&default_output_path);
 
     // Checks if the input file exists
@@ -151,12 +151,12 @@ mod tests {
     #[test]
     fn remove_forks() -> Result<()> {
         let input_path = "tests/data/phases/forks/forks.csv";
-        let default_output_path = format!("{}.non-forks.csv", input_path);
+        let default_output_path = format!("{input_path}.non-forks.csv");
 
         delete_file(&default_output_path, true)?;
-        run(input_path, None, "fork", false, false, &test_logger())?;
+        run(input_path, None, "fork", false, false, test_logger())?;
 
-        let expected_df = open_csv(&format!("{}.expected", default_output_path), None, None)?;
+        let expected_df = open_csv(&format!("{default_output_path}.expected"), None, None)?;
 
         let output_df = open_csv(&default_output_path, None, None)?;
 

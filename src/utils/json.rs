@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 /// The JSON value of the file or an error if the file could not be opened, read, or parsed.
 pub fn open_json_from_path(path: &str) -> Result<JsonValue> {
     json::parse(&std::fs::read_to_string(path)?)
-        .with_context(|| format!("Could not parse JSON file at path {}", path))
+        .with_context(|| format!("Could not parse JSON file at path {path}"))
 }
 
 /// Converts a JSON array to a HashSet of strings.
@@ -66,7 +66,7 @@ impl FromJson for i32 {
     type Output = i32;
     fn parse(json: JsonValue) -> Result<i32> {
         json.as_i32()
-            .with_context(|| format!("Could not parse {} as i32", json))
+            .with_context(|| format!("Could not parse {json} as i32"))
     }
 }
 
@@ -74,7 +74,7 @@ impl FromJson for i64 {
     type Output = i64;
     fn parse(json: JsonValue) -> Result<i64> {
         json.as_i64()
-            .with_context(|| format!("Could not parse {} as i64", json))
+            .with_context(|| format!("Could not parse {json} as i64"))
     }
 }
 
@@ -82,7 +82,7 @@ impl FromJson for u32 {
     type Output = u32;
     fn parse(json: JsonValue) -> Result<u32> {
         json.as_u32()
-            .with_context(|| format!("Could not parse {} as u32", json))
+            .with_context(|| format!("Could not parse {json} as u32"))
     }
 }
 
@@ -90,7 +90,7 @@ impl FromJson for u64 {
     type Output = u64;
     fn parse(json: JsonValue) -> Result<u64> {
         json.as_u64()
-            .with_context(|| format!("Could not parse {} as u64", json))
+            .with_context(|| format!("Could not parse {json} as u64"))
     }
 }
 
@@ -99,7 +99,7 @@ impl FromJson for String {
     fn parse(json: JsonValue) -> Result<String> {
         json.as_str()
             .map(|s| s.to_owned())
-            .with_context(|| format!("Could not parse {} as String", json))
+            .with_context(|| format!("Could not parse {json} as String"))
     }
 }
 
@@ -107,7 +107,7 @@ impl FromJson for bool {
     type Output = bool;
     fn parse(json: JsonValue) -> Result<bool> {
         json.as_bool()
-            .with_context(|| format!("Could not parse {} as bool", json))
+            .with_context(|| format!("Could not parse {json} as bool"))
     }
 }
 
@@ -121,12 +121,7 @@ impl FromJson for bool {
 /// A boolean indicating whether the field is null, or an error if the field does not exist or if the JSON object is null.
 pub fn field_is_null(json: &JsonValue, key: &str) -> Result<bool> {
     ensure!(!json.is_null(), "Cannot get field from null json");
-    ensure!(
-        json.has_key(key),
-        "Value {} does not have {} field",
-        json,
-        key
-    );
+    ensure!(json.has_key(key), "Value {json} does not have {key} field");
     Ok(json[key].is_null())
 }
 /// Gets a field from a JSON object and parses it to a given type.
@@ -139,12 +134,7 @@ pub fn field_is_null(json: &JsonValue, key: &str) -> Result<bool> {
 /// The value of the field parsed to the given type, or an error if the field does not exist, cannot be parsed to the given type, or if the JSON object is null.
 pub fn get_field<T: FromJson>(json: &JsonValue, key: &str) -> Result<T::Output, Error> {
     ensure!(!json.is_null(), "Cannot get field from null json");
-    ensure!(
-        json.has_key(key),
-        "Value {} does not have {} field",
-        json,
-        key
-    );
+    ensure!(json.has_key(key), "Value {json} does not have {key} field");
     T::parse(json[key].clone())
 }
 

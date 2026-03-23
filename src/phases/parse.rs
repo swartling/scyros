@@ -12,14 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Parse all the files in the input file and extract the functions whose body contains one of the provided keywords.
-//! All parsed files repositories are logged in a CSV file where statistics about the functions are stored.
-//! These statistics include the number of lines of code, the number of words, the number of keywords matched, the number of conditional statements, loops,
-//! and the maximum nesting level of these statements.
-//! The name of the log file is the same as the input file with the extension `.functions`.
-//! The functions are stored in a folder with the same name as the file and the extension `_functions`.
-//! The supported languages are C, C++, Java, Python and Fortran.
-
+#![doc = include_str!("../docs/parse.md")]
 use clap::ArgAction;
 use clap::{Arg, Command};
 use indicatif::ProgressBar;
@@ -46,15 +39,7 @@ use crate::utils::{
 pub fn cli() -> Command {
     Command::new("parse")
         .about("Parse all the files in the dataset and extract functions whose body contains one of the provided keywords.")
-        .long_about(
-            "Parse all the files in the input file and extract functions whose body contains one of the provided keywords. \
-            All parsed files repositories are logged in a CSV file where statistics about the functions are stored. \
-            These statistics include the number of lines of code, the number of words, the number of keywords matched, the number of conditional statements, loops,
-            and the maximum nesting level of these statements.\n\
-            The name of the log file is the same as the input file with the extension \".functions\". \
-            The functions are stored in a folder with the same name as the file and the extension \"_functions\".\n\
-            The supported languages are C, C++, Java, Python and Fortran."
-        )
+        .long_about(include_str!("../docs/parse.md"))
         .disable_version_flag(true)
         .arg(
             Arg::new("input")
@@ -90,13 +75,16 @@ pub fn cli() -> Command {
                 .value_name("KEYWORDS_FILES.json")
                 .help("List of files containing the list of extensions and keywords to use. The files must be in JSON format.\n\
                     The extensions should be written without the period (`java` instead of `.java`). The files must have the following structure:\n    \
-                        {\n        \
-                            \"extensions\": {\n            \
-                                \"ext1\": [\"kw11\", \"kw12\", ...],\n            \
-                                \"ext2\": [\"kw21\", \"kw22\", ...],\n            \
-                                ...\n        \
-                            },\n        \
-                            \"keywords\": [\"kw1\", \"kw2\", ...]\n    \
+                        {\n\
+                            \"languages\": [\n\
+                                {\n\
+                                \"name\": \"LanguageName\",\n\
+                                \"extensions\": [\".ext1\", \".ext2\", ...],\n\
+                                \"keywords\": [\"localKeyword1\", \"localKeyword2\", ...]    // optional\n\
+                                },\n\
+                                ...\n\
+                            ],\n\
+                            \"keywords\": [\"globalKeyword1\", \"globalKeyword2\", ...]      // optional\n\
                         }")
                 .required(true)
         )
@@ -145,61 +133,33 @@ pub fn cli() -> Command {
             .default_value("ignore")
             .value_parser(["ignore", "skip-file", "skip-function", "abort"]),
         )
+        .arg(
+            Arg::new("ignore-comments")
+            .long("ignore-comments")
+            .help("Whether to ignore comments when extracting functions, in addition to ignoring them during keyword matching.")
+            .default_value("false")
+            .action(ArgAction::SetTrue),
+        )
 }
 
-/// Runs the parser.
+/// Entry point of the program
 ///
 /// # Arguments
 ///
-/// * `input_file` - Path to the input csv file to use.
-/// * `output_file` - Path to the output csv file storing the functions statistics.
-/// * `logs_file` - Path to the output csv file storing the files statistics.
+/// * `input_path` - Path to the input csv file to use.
+/// * `output_path` - Path to the output csv file storing the functions statistics.
+/// * `logs_path` - Path to the output csv file storing the files statistics.
 /// * `keywords_file_paths` - Paths to the files containing the list of extensions and keywords to use.
-/// * `threads` - Number of threads to use.
-///
-/// Parses all the files in the input file and extracts the functions whose body contains one of the provided keywords.
-/// All parsed files repositories are logged in a CSV file where statistics about the functions are stored.
-/// These statistics include the number of lines of code, the number of words, the number of keywords matched, the number of conditional statements, loops,
-/// and the maximum nesting level of these statements.
-///
-/// The name of the log file is the same as the input file with the extension `.functions`.
-/// The functions are stored in a folder with the same name as the file and the extension `_functions`.
-///
-/// The input (i.e. the file where the ids are stored) must be a valid CSV file where the first column is the path to the file and
-/// the second column is the extension of the file. Other columns are ignored.
-///
-///
-///
-/// The list of extensions and keywords needs to be stored in a JSON file. The extensions should be written without the period (`java` instead of `.java`).
-/// The file must have the following structure:
-///
-/// ```json
-/// {
-///     "extensions": {
-///         "ext1": ["kw11", "kw12", ...],
-///         "ext2": ["kw21", "kw22", ...],
-///         ...
-///     },
-///     "keywords": ["kw1", "kw2", ...]
-/// }
-/// ```
-///
-/// # Example
-///
-/// The following configuration file will download all the C, Java and TypeScript files that contain floating point types:
-///
-/// ```json
-/// {
-///     "extensions": {
-///         "c": [],
-///         "java": [],
-///         "ts": ["number"],
-///         ...
-///     },
-///     "keywords": ["float", "double"]
-/// }
-/// ```
-///
+/// * `opt_languages` - Optional list of languages to parse. If not specified, all supported languages are parsed.
+/// * `fail_policy` - The policy to apply when a parse error is encountered. It can be one of the following:
+///   * `ignore`: continue parsing and write the statistics of the file or function with parse error as if there was no error.
+///   * `skip-file`: replace the file statistics with an error row in the output file, does not extract any function from the file.
+///   * `skip-function`: replace the function statistics with an error row in the output file.
+/// * `threads` - The number of threads to use.
+/// * `seed` - The seed used to shuffle the input file.
+/// * `force` - Whether to override the output file if it already exists.
+/// * `ignore_comments` - Whether to ignore comments when extracting functions.
+/// * `logger` - The logger to use to display information about the progress of the program.
 pub fn run(
     input_path: &str,
     output_path: Option<&str>,
@@ -210,6 +170,7 @@ pub fn run(
     threads: usize,
     seed: u64,
     force: bool,
+    ignore_comments: bool,
     logger: &Logger,
 ) -> Result<()> {
     let supported_languages: HashSet<&'static str> = vec![
@@ -231,8 +192,7 @@ pub fn run(
             for lang in l.iter() {
                 ensure!(
                     supported_languages.contains(lang),
-                    "Unsupported language: {}",
-                    lang
+                    "Unsupported language: {lang}"
                 );
             }
             l
@@ -251,11 +211,11 @@ pub fn run(
             .collect::<Vec<String>>(),
     );
 
-    let default_output_path: String = format!("{}.functions.csv", input_path);
+    let default_output_path: String = format!("{input_path}.functions.csv");
     let output_path: &str = output_path.unwrap_or(&default_output_path);
     log_output_file(output_path, false, force)?;
 
-    let default_logs_path: String = format!("{}.function_logs.csv", input_path);
+    let default_logs_path: String = format!("{input_path}.function_logs.csv");
     let logs_path: &str = logs_path.unwrap_or(&default_logs_path);
 
     log_output_file(logs_path, false, force)?;
@@ -401,6 +361,7 @@ pub fn run(
                                 language,
                                 &keyword_files,
                                 fail_policy,
+                                ignore_comments,
                                 &word_counter,
                             ) {
                                 Ok(s) => {
@@ -412,8 +373,8 @@ pub fn run(
                                 }
                             },
                             Err(row_nr) => {
-                                let _ = my_tx
-                                    .send(Some(Err(anyhow!("Could not parse row {}", row_nr))));
+                                let _ =
+                                    my_tx.send(Some(Err(anyhow!("Could not parse row {row_nr}"))));
                             }
                         },
                         None => {
@@ -439,9 +400,9 @@ pub fn run(
             match msg {
                 Some(msg_content) => {
                     let (output, opt_log) = msg_content?;
-                    write!(&mut output_file, "{}", output)?;
+                    write!(&mut output_file, "{output}")?;
                     if let Some(log) = opt_log {
-                        writeln!(&mut logs_file, "{}", log)?;
+                        writeln!(&mut logs_file, "{log}")?;
                     }
                     progress.inc(1);
                 }
@@ -458,7 +419,7 @@ pub fn run(
         progress.finish();
         Ok(())
     })
-    .map_err(|e| anyhow!("Error in thread pool: {:?}", e))?
+    .map_err(|e| anyhow!("Error in thread pool: {e:?}"))?
 }
 
 /// Analyze a file and extract the functions whose body contains one of the provided keywords.
@@ -471,6 +432,7 @@ pub fn run(
 /// * `language` - The language of the file.
 /// * `keywords_files` - The files containing the list of keywords to search for in the functions.
 /// * `fail_policy` - The policy to apply when a parse error is encountered.
+/// * `ignore_comments` - Whether to ignore comments when extracting functions, in addition to ignoring them during keyword matching.
 /// * `word_counter` - The matcher to use to count the words in the functions.
 /// # Returns
 ///
@@ -490,30 +452,31 @@ fn analyze_file(
     language: &str,
     keywords_files: &KeywordFiles,
     fail_policy: &str,
+    ignore_comments: bool,
     word_counter: &Matcher,
 ) -> Result<(String, Option<String>)> {
     let grammar = language_to_grammar(language)
-        .with_context(|| format!("Unsupported language: {}", language))?;
+        .with_context(|| format!("Unsupported language: {language}"))?;
     // Initializes the parser
     let mut parser: Parser = Parser::new();
     parser.set_language(&grammar.lang)?;
     match load_file(path, 1024 * 1024 * 1024)? {
         Ok(source_code) => {
             // Creates a folder to store the functions of the file
-            let target_folder: String = format!("{}.functions", path);
+            let target_folder: String = format!("{path}.functions");
             create_dir(&target_folder)?;
 
             // Parses the source code of the file
             let tree: Tree = parser
                 .parse(&source_code, None)
-                .with_context(|| format!("Failed to parse file {}", path))?;
+                .with_context(|| format!("Failed to parse file {path}"))?;
 
             let file_has_parse_error: bool = tree.root_node().has_error();
 
             if file_has_parse_error && fail_policy == "skip-file" {
                 Ok((String::new(), None))
             } else if file_has_parse_error && fail_policy == "abort" {
-                bail!("Parse error in file {}", path)
+                bail!("Parse error in file {path}")
             } else {
                 let root: Node<'_> = tree.root_node();
                 let (output, total_functions, functions_with_kw, functions_with_specific_kw) =
@@ -526,6 +489,7 @@ fn analyze_file(
                         &source_code,
                         keywords_files,
                         fail_policy,
+                        ignore_comments,
                         word_counter,
                         &mut parser,
                     )?;
@@ -609,6 +573,7 @@ fn file_error_row(
 /// * `source` - The source code of the source file.
 /// * `keyword_files` - The keyword files containing the keywords to search for in the functions.
 /// * `fail_policy` - The policy to apply when a parse error is encountered.
+/// * `ignore_comments` - Whether to ignore comments when extracting functions, in addition to ignoring them during keyword matching.
 /// * `word_counter` - The matcher to use to count the words in the functions.
 /// * `parser` - The parser to use to parse the functions.
 ///
@@ -625,6 +590,7 @@ fn extract_functions(
     source: &[u8],
     keyword_files: &KeywordFiles,
     fail_policy: &str,
+    ignore_comments: bool,
     word_counter: &Matcher,
     parser: &mut Parser,
 ) -> Result<(String, usize, usize, Vec<usize>), Error> {
@@ -675,10 +641,7 @@ fn extract_functions(
                 let tree_without_comments: Tree = parser
                     .parse(function_code_with_strings, None)
                     .with_context(|| {
-                        format!(
-                            "Error parsing code for function {}/{}",
-                            target_folder, functions
-                        )
+                        format!("Error parsing code for function {target_folder}/{functions}")
                     })?;
 
                 // Remove string literals from the function code
@@ -697,7 +660,14 @@ fn extract_functions(
                         target_folder, function_position.0, function_position.1
                     );
 
-                    std::fs::write(&function_path, function_source_code)?;
+                    std::fs::write(
+                        &function_path,
+                        if ignore_comments {
+                            function_code_with_strings
+                        } else {
+                            function_source_code
+                        },
+                    )?;
 
                     // Count the number of loops, conditionals and parameters if the function
                     let (loops, loop_nesting) = count_nodes_of_kind(&node, &grammar.loop_nodes);
@@ -1238,7 +1208,7 @@ fn find_first_error_position(root: &Node) -> Option<(usize, usize)> {
 
 fn position_to_string(position: Option<(usize, usize)>) -> String {
     match position {
-        Some((row, col)) => format!("{}:{}", row, col),
+        Some((row, col)) => format!("{row}:{col}"),
         None => "not-found".to_string(),
     }
 }
@@ -1357,23 +1327,24 @@ mod tests {
         input_file_path: &str,
         keywords: &[&str],
         languages: Option<Vec<&str>>,
+        ignore_comments: bool,
         should_pass: bool,
     ) -> Result<()> {
-        let input_df = open_csv(&input_file_path, None, None)?;
+        let input_df = open_csv(input_file_path, None, None)?;
         ensure!(
             has_column(&input_df, "name"),
             "Input dataframe must have a 'name' column"
         );
         let input_df: Vec<&str> = dataframes::str(&input_df, "name")?;
 
-        let output_file_path = format!("{}.functions.csv", input_file_path);
+        let output_file_path = format!("{input_file_path}.functions.csv");
         delete_file(&output_file_path, true)?;
 
-        let logs_file_path = format!("{}.function_logs.csv", input_file_path);
+        let logs_file_path = format!("{input_file_path}.function_logs.csv");
         delete_file(&logs_file_path, true)?;
 
         for path in input_df.iter() {
-            delete_dir(&format!("{}.functions", path), true)?;
+            delete_dir(format!("{path}.functions"), true)?;
         }
 
         if should_pass {
@@ -1387,6 +1358,7 @@ mod tests {
                 8,
                 0,
                 false,
+                ignore_comments,
                 test_logger(),
             )?;
 
@@ -1400,7 +1372,7 @@ mod tests {
                 .unwrap();
 
             let expected_logs_df = open_csv(
-                &format!("{}.function_logs.csv.expected", input_file_path),
+                &format!("{input_file_path}.function_logs.csv.expected"),
                 None,
                 None,
             )?;
@@ -1420,7 +1392,7 @@ mod tests {
             );
             let sorted_output_df = output_df.sort(vec!["path"], SortMultipleOptions::new())?;
 
-            let expected_df = open_csv(&format!("{}.expected", output_file_path), None, None)?;
+            let expected_df = open_csv(&format!("{output_file_path}.expected"), None, None)?;
             ensure!(
                 has_column(&expected_df, "path"),
                 "Expected dataframe must have a 'path' column"
@@ -1460,6 +1432,7 @@ mod tests {
                 8,
                 0,
                 false,
+                ignore_comments,
                 test_logger()
             )
             .is_err());
@@ -1469,7 +1442,7 @@ mod tests {
         delete_file(&logs_file_path, true)?;
 
         for path in input_df {
-            delete_dir(&format!("{}.functions", path), true)?;
+            delete_dir(format!("{path}.functions"), true)?;
         }
         Ok(())
     }
@@ -1483,9 +1456,9 @@ mod tests {
             "tests/data/keywords/long_double.json",
         ];
 
-        let input_file_path = format!("{}/to_parse.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/to_parse.csv");
 
-        test_parse(&input_file_path, &keywords, None, true)
+        test_parse(&input_file_path, &keywords, None, false, true)
     }
 
     #[test]
@@ -1496,35 +1469,60 @@ mod tests {
             "tests/data/keywords/fp_others.json",
         ];
 
-        let input_file_path = format!("{}/parse_go.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/parse_go.csv");
 
-        test_parse(&input_file_path, &keywords, None, true)
+        test_parse(&input_file_path, &keywords, None, false, true)
     }
 
     #[test]
     fn invalid_file() -> Result<()> {
         let keywords = vec!["tests/data/keywords/c_float.json"];
 
-        let input_file_path = format!("{}/invalid.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/invalid.csv");
 
-        test_parse(&input_file_path, &keywords, None, true)
+        test_parse(&input_file_path, &keywords, None, false, true)
     }
 
     #[test]
     fn invalid_lang() -> Result<()> {
         let keywords = vec!["tests/data/keywords/scala_float.json"];
 
-        let input_file_path = format!("{}/empty.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/empty.csv");
 
-        test_parse(&input_file_path, &keywords, Some(["rust"].to_vec()), false)
+        test_parse(
+            &input_file_path,
+            &keywords,
+            Some(["rust"].to_vec()),
+            false,
+            false,
+        )
     }
 
     #[test]
     fn empty() -> Result<()> {
         let keywords = vec!["tests/data/keywords/scala_float.json"];
 
-        let input_file_path = format!("{}/empty.csv", TEST_DATA);
+        let input_file_path = format!("{TEST_DATA}/empty.csv");
 
-        test_parse(&input_file_path, &keywords, Some(["c"].to_vec()), true)
+        test_parse(
+            &input_file_path,
+            &keywords,
+            Some(["c"].to_vec()),
+            false,
+            true,
+        )
+    }
+
+    #[test]
+    fn ignore_comments_go() -> Result<()> {
+        let keywords = vec![
+            "tests/data/keywords/fp_types.json",
+            "tests/data/keywords/fp_transcendental.json",
+            "tests/data/keywords/fp_others.json",
+        ];
+
+        let input_file_path = format!("{TEST_DATA}/fn_comments_go.csv");
+
+        test_parse(&input_file_path, &keywords, None, true, true)
     }
 }

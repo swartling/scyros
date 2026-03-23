@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Collect metadata of GitHub projects. The input file must be a valid CSV file where one of the columns contains the full
-//! names of the projects, and one contains their ids. The program sends requests to the GitHub API to collect metadata about each project. Projects
-//! are chosen randomly without replacement. The metadata is saved in a new CSV file. If the program is interrupted, it
-//! can be restarted and will continue from where it left off. The program can also optionally use a cache file to save requests.
-//! By default, the name of the output file is the same as the input file with the suffix '.metadata.csv'.
+#![doc = include_str!("../docs/metadata.md")]
 
 use anyhow::{bail, Result};
 use std::collections::HashMap;
@@ -47,13 +43,7 @@ use tracing::info;
 pub fn cli() -> Command {
     Command::new("metadata")
         .about("Collect the metadata of GitHub projects")
-        .long_about(
-            "Collect metadata of GitHub projects. The input file must be a valid CSV file where one of the columns (\"name\") contains the full names of the projects, and another one contains their ids.\n\
-            The program sends requests to the GitHub API to collect metadata about each project.\n\
-            Projects are chosen randomly without replacement. The metadata is saved in a new CSV file.\nIf the program is interrupted, it \
-            can be restarted and will continue from where it left off.\nThe program can also optionally use a cache file to save requests.\n\
-            By default, the name of the output file is the same as the input file with the suffix '.metadata.csv'.\n"
-        )
+        .long_about(include_str!("../docs/metadata.md"))
         .author("Andrea Gilot <andrea.gilot@it.uu.se>")
         .disable_version_flag(true)
         .arg(
@@ -322,7 +312,7 @@ pub fn run(
                         request_from_cache += 1;
                         cache.get(&id).unwrap().clone()
                     } else {
-                        match gh.request(&format!("https://api.github.com/repos/{}", full_name)) {
+                        match gh.request(&format!("https://api.github.com/repos/{full_name}")) {
                             Ok(json) => { ProjectMetadata::parse_json(&json, ())? }
                                 .to_csv((id, full_name.to_string())),
                             Err(e) => ProjectMetadata::default()
@@ -330,7 +320,7 @@ pub fn run(
                         }
                     };
 
-                    writeln!(&mut output_file, "{}", csv_row)?;
+                    writeln!(&mut output_file, "{csv_row}")?;
 
                     progress_bar.inc(1);
                     progress_bar.set_message(request_from_cache.to_string());
@@ -338,7 +328,7 @@ pub fn run(
                 }
             }
             Err(idx) => {
-                bail!("Could not parse row {} in the input file", idx)
+                bail!("Could not parse row {idx} in the input file")
             }
         }
     }
@@ -515,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_language_scraper() -> Result<()> {
-        let input_file: String = format!("{}/repos.csv", TEST_DATA);
-        let output_file: String = format!("{}.metadata.csv", input_file);
+        let input_file: String = format!("{TEST_DATA}/repos.csv");
+        let output_file: String = format!("{input_file}.metadata.csv");
         ensure!(
             std::path::Path::new(&input_file).exists(),
             "Input file does not exist"
@@ -545,7 +535,7 @@ mod tests {
         );
         let sorted_output_df = output_df.sort(vec!["name"], SortMultipleOptions::new())?;
 
-        let expected_df = open_csv(&format!("{}.expected", output_file), None, None)?;
+        let expected_df = open_csv(&format!("{output_file}.expected"), None, None)?;
         ensure!(
             has_column(&expected_df, "name"),
             "Expected output does not have 'name' column"

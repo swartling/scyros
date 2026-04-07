@@ -1,7 +1,7 @@
 use blake3::Hash;
 use std::collections::HashMap;
 pub struct InvertedIndex {
-    map: HashMap<Vec<u8>, Vec<(Hash, usize)>>, // Maps tokens to a list of function IDs where they appear as well as the frequency of the token in that function
+    map: HashMap<Vec<u8>, Vec<(Hash, usize, (usize, usize))>>, // token -> Vec<(function_id, count, (token_position, cumulative_count))>
 }
 
 impl Default for InvertedIndex {
@@ -17,14 +17,24 @@ impl InvertedIndex {
         }
     }
 
-    pub fn add(&mut self, token: &Vec<u8>, count: usize, function_id: Hash) {
-        self.map
-            .entry(token.to_owned())
-            .or_default()
-            .push((function_id, count));
+    pub fn add(
+        &mut self,
+        token: &Vec<u8>,
+        function_id: Hash,
+        count: usize,
+        token_position: usize,
+        cumulative_count: usize,
+    ) {
+        //token_position is the index of the token.
+        // cumulative_count is the number of words seen up to and including this token including duplicates
+        self.map.entry(token.to_owned()).or_default().push((
+            function_id,
+            count,
+            (token_position, cumulative_count),
+        ));
     }
 
-    pub fn get(&self, token: &Vec<u8>) -> Option<&Vec<(Hash, usize)>> {
+    pub fn get(&self, token: &Vec<u8>) -> Option<&Vec<(Hash, usize, (usize, usize))>> {
         self.map.get(token)
     }
 
@@ -43,7 +53,7 @@ impl InvertedIndex {
     pub fn token_frequency(&self, token: &Vec<u8>, count_duplicates: bool) -> usize {
         if let Some(functions) = self.get(token) {
             if count_duplicates {
-                functions.iter().map(|(_, count)| *count).sum()
+                functions.iter().map(|(_, count, _)| *count).sum()
             } else {
                 functions.len()
             }

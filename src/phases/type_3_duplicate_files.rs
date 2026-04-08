@@ -239,7 +239,7 @@ pub fn run(
         &function_paths_and_lengths,
     )?;
     info!(
-        "Finished detecting clones. {} unique files found.",
+        "Finished detecting clones. {} clones found.",
         clone_map.len()
     );
     Ok(())
@@ -375,7 +375,8 @@ fn detect_clones(
     let word_matcher: Matcher = Matcher::words_matcher();
     let p_prefix = vector_of_indices.len();
     for (path, origin_word_count) in function_paths_and_lengths.values() {
-        info!("Path: {}, Words: {}", path, origin_word_count);
+        info!("-----------------------------------------------------------------------------");
+        // info!("Path: {}, Words: {}", path, origin_word_count);
         match load_file(path, 1024 * 1024 * 1024) {
             Ok(Ok(function_code)) => {
                 let local_bow = word_matcher.bag_of_words(&function_code.to_ascii_lowercase());
@@ -404,15 +405,19 @@ fn detect_clones(
                 total_cost_vector.push(usize::MAX); //total cost is initially set to max since so 0-prefix can never be chosen as the best prefix scheme
                                                     // big loop, will be used for the different prefix schemes
                 let mut origin_cumulative_count = 0usize;
+                let mut origin_token_position = 0usize;
                 'prefix_schemes: for p in 1..=p_prefix {
                     let mut filter_cost = filter_cost_vector[p - 1]; // start with the filter cost of the previous prefix scheme
                     let prefix_end = init_prefix_end + p - 1; //the prefix end for the current scheme is at least the prefix end of the first scheme + the number of tokens in the prefix - 1 (since p-prefix is at least 1)
 
-                    for (idx, token_tuple) in
-                        origin_vectored_bow.iter().take(prefix_end).enumerate()
+                    /* for (idx, token_tuple) in
+                    origin_vectored_bow.iter().take(prefix_end).enumerate() */
+                    while origin_token_position < prefix_end
+                        && origin_token_position < origin_vectored_bow.len()
                     {
+                        let token_tuple = origin_vectored_bow.get(origin_token_position).unwrap();
                         //loop through the prefix vector of the current scheme, for the first scheme this is just the original prefix vector, for the next schemes this includes additional tokens
-                        let is_new = idx + 1 == prefix_end;
+                        let is_new = origin_token_position + 1 == prefix_end;
                         origin_cumulative_count += token_tuple.1;
                         filter_cost += delta_filter_cost(token_tuple, vector_of_indices, p, is_new);
                         for candidate in vector_of_indices[p - 1]
@@ -449,17 +454,41 @@ fn detect_clones(
                                 }
                             }
                         }
-                        filter_cost_vector.push(filter_cost);
-                        verification_cost_vector.push(candidate_map.verification_cost_estimate(p));
-                        total_cost_vector.push(filter_cost + verification_cost_vector[p]);
+                        origin_token_position += 1;
+                    }
+                    if p == 1 {
+                        candidate_map.apply_pending_updates(function_paths_and_lengths);
+                        //apply updates for the first prefix scheme before estimating costs since it relies on min/max length
+                    }
+                    let verification_cost = candidate_map.verification_cost_estimate(p);
+                    filter_cost_vector.push(filter_cost);
+                    verification_cost_vector.push(verification_cost);
+                    total_cost_vector.push(filter_cost + verification_cost);
 
-                        if total_cost_vector[p] > total_cost_vector[p - 1] {
-                            info!("Best prefix scheme is {} with estimated total cost of {}, filter cost: {}, verification cost: {}. Moving on to verification phase.", p - 1, total_cost_vector[p - 1], filter_cost_vector[p - 1], verification_cost_vector[p - 1]);
-                            //return verify_candidates(candidate_map, path, function_code, p - 1); //Need to keep in mind if candidate map is already updated with new prefix scheme
+                    if total_cost_vector[p] > total_cost_vector[p - 1] {
+                        info!("Best prefix scheme is {} with estimated total cost of {}, filter cost: {}, verification cost: {}. Moving on to verification phase.", p - 1, total_cost_vector[p - 1], filter_cost_vector[p - 1], verification_cost_vector[p - 1]);
+                        info!("The next prefix scheme {} has estimated total cost of {}, filter cost: {}, verification cost: {}.", p, total_cost_vector[p], filter_cost_vector[p], verification_cost_vector[p]);
+                        verify_candidates(
+                            origin_function_id,
+                            &origin_vectored_bow,
+                            (origin_token_position, origin_cumulative_count),
+                            &mut candidate_map,
+                            &mut clone_map,
+                            p_prefix,
+                            token_rankings,
+                            threshold,
+                            function_paths_and_lengths,
+                        )?;
+                        break 'prefix_schemes;
+                    } else {
+                        //apply updates
+                        candidate_map.apply_pending_updates(function_paths_and_lengths);
+                        if p == p_prefix {
+                            //return verify_candidates(candidate_map, path, function_code, p);
                             verify_candidates(
                                 origin_function_id,
                                 &origin_vectored_bow,
-                                (idx, origin_cumulative_count),
+                                (origin_token_position, origin_cumulative_count),
                                 &mut candidate_map,
                                 &mut clone_map,
                                 p_prefix,
@@ -468,27 +497,12 @@ fn detect_clones(
                                 function_paths_and_lengths,
                             )?;
                             break 'prefix_schemes;
-                        } else {
-                            //apply updates
-                            candidate_map.apply_pending_updates(function_paths_and_lengths);
-                            if p == p_prefix {
-                                //return verify_candidates(candidate_map, path, function_code, p);
-                                verify_candidates(
-                                    origin_function_id,
-                                    &origin_vectored_bow,
-                                    (idx, origin_cumulative_count),
-                                    &mut candidate_map,
-                                    &mut clone_map,
-                                    p_prefix,
-                                    token_rankings,
-                                    threshold,
-                                    function_paths_and_lengths,
-                                )?;
-                                break 'prefix_schemes;
-                            }
                         }
                     }
                 }
+                info!("Filter cost vector: {:?}", filter_cost_vector);
+                info!("Verification cost vector: {:?}", verification_cost_vector);
+                info!("Total cost vector: {:?}", total_cost_vector);
             }
             Ok(Err(_e)) => {
                 info!("Warning: File too large at path '{}', skipping.", path);

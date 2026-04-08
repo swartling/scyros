@@ -167,7 +167,8 @@ impl CandidateMap {
         for candidate in &self.pending_updates {
             let function_id = candidate.0;
             let current_matches = self.get_token_matches(&function_id);
-            if current_matches == n - 1 {
+            if n > 1 && current_matches == n - 1 {
+                // if n==1 the pending list is empty as they have already been applied
                 survivors += 1;
             }
         }

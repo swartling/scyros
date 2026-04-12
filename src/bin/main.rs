@@ -267,6 +267,7 @@ fn main() {
                                     cli_subargs.get_one::<String>("map").map(|x| x.as_str()),
                                     cli_subargs.get_one::<String>("logs").map(|x| x.as_str()),
                                     /* languages */
+                                    cli_subargs.get_one::<String>("language").map(|s| s.as_str()),
                                     *cli_subargs.get_one::<usize>("threads").unwrap(),
                                     *cli_subargs.get_one::<usize>("p_prefix").unwrap(),
                                     *cli_subargs.get_one::<f64>("threshold").unwrap(),

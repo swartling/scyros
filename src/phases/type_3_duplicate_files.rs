@@ -47,10 +47,11 @@ pub fn cli() -> Command {
                 .required(false),
         )
         .arg(
-            Arg::new("languages")
+            Arg::new("language")
                 .short('g')
                 .long("languages")
-                .help("Comma-separated list of languages to consider. If not provided, all languages will be considered.")
+                /* .help("Comma-separated list of languages to consider. If not provided, all languages will be considered.") */
+                .help("language as a string, e.g. 'java'. If not provided, defaults to 'java'. TODO")
                 .required(false),
         )
         .arg(
@@ -91,13 +92,15 @@ pub fn run(
     _map_path: Option<&str>, //optional path to the map CSV file to store the mapping of clones to their originals.
     _logs_path: Option<&str>, //for error logs, not implemented yet
     /* _opt_languages: Option<Vec<&str>>, //optional list of languages. Currently java is hardcoded */
+    opt_language: Option<&str>,
     _threads: usize,               //current implementation is single-threaded
     p_prefix: usize,               //number of tokens to consider for the prefix, default is 1
     threshold: f64,                //threshold for the prefix length, default is 0.8
     example_word: Option<&String>, //an example word to check the global Bag of Words for, optional
     _logger: &Logger,
 ) -> Result<()> {
-    let language = "java";
+    //let language = "java";
+    let language = opt_language.unwrap_or("java"); //default to java currently
     let minimum_loc = 5; //temporary
     let mut input_file = open_csv(
         input_path,
@@ -531,10 +534,14 @@ fn verify_candidates(
     // to be considered clones based on their full token vectors.
     // The clone_map is updated with the results, mapping original function ids to sets of clone function ids.
     let word_matcher: Matcher = Matcher::words_matcher();
-    let origin_word_count = function_paths_and_lengths
+    let (origin_path, origin_word_count) = function_paths_and_lengths
         .get(&origin_function_id)
-        .map(|(_, count)| *count)
-        .unwrap_or(0);
+        .copied()
+        .unwrap_or(("Unknown", 0));
+    info!(
+        "Verifying candidates for function at path '{}', with word count {}.",
+        origin_path, origin_word_count
+    );
     let origin_vectored_bow = origin_vectored_bow.to_owned();
     let origin_token_count = origin_vectored_bow.len();
     let candidates_to_verify = candidate_map.get_candidates_with_n_matches(p_prefix, "at_least");
@@ -544,6 +551,9 @@ fn verify_candidates(
             .get(&candidate_id)
             .copied()
             .unwrap();
+        if candidate_id == origin_function_id {
+            continue; //skip comparing the function to itself
+        }
         match load_file(path, 1024 * 1024 * 1024) {
             Ok(Ok(candidate_code)) => {
                 // Handle successful file load
@@ -563,22 +573,31 @@ fn verify_candidates(
                 let current_threshold = (max(origin_word_count, candidate_word_count) as f64
                     * threshold)
                     .round() as usize;
+                info!("Current threshold: {}", current_threshold);
                 let mut candidate_last_token_seen_pos =
                     candidate_map.get_last_token_seen_pos(&candidate_id); // (token_position, cumulative_count)
                 let mut new_matches = 0usize;
                 while origin_last_token_seen_pos.0 < origin_token_count
                     && candidate_last_token_seen_pos.0 < candidate_token_count
                 {
-                    if min(
-                        origin_token_count - origin_last_token_seen_pos.1,
-                        candidate_token_count - candidate_last_token_seen_pos.1,
-                    ) > current_threshold
-                    {
+                    let upper_bound = min(
+                        origin_word_count - origin_last_token_seen_pos.1,
+                        candidate_word_count - candidate_last_token_seen_pos.1,
+                    ) + candidate_map.get_token_matches(&candidate_id);
+
+                    if upper_bound > current_threshold {
+                        info!("IF MIN");
                         let origin_token_tuple = &origin_vectored_bow[origin_last_token_seen_pos.0];
                         let candidate_token_tuple =
                             &vectored_candidate_bow[candidate_last_token_seen_pos.0];
                         if origin_token_tuple.0 == candidate_token_tuple.0 {
                             //it's a match
+                            info!("MATCHING!");
+                            info!(
+                                "MATCH! origin: {}, candidate: {}",
+                                String::from_utf8_lossy(&origin_token_tuple.0),
+                                String::from_utf8_lossy(&candidate_token_tuple.0)
+                            );
                             new_matches += min(origin_token_tuple.1, candidate_token_tuple.1);
                             candidate_last_token_seen_pos.0 += 1;
                             candidate_last_token_seen_pos.1 += candidate_token_tuple.1;
@@ -594,15 +613,41 @@ fn verify_candidates(
                                 .unwrap_or(usize::MAX)
                         {
                             //origin token is more frequent than candidate token, so we move in the origin vector
+                            info!(
+                                "origin_count > candidate_count: origin: {}, candidate: {}",
+                                String::from_utf8_lossy(&origin_token_tuple.0),
+                                String::from_utf8_lossy(&candidate_token_tuple.0)
+                            );
                             origin_last_token_seen_pos.0 += 1;
                             origin_last_token_seen_pos.1 += origin_token_tuple.1;
                         } else {
                             //candidate token is more frequent than origin token, so we move in the candidate vector
+                            info!(
+                                "candidate_count > origin_count: origin: {}, candidate: {}",
+                                String::from_utf8_lossy(&origin_token_tuple.0),
+                                String::from_utf8_lossy(&candidate_token_tuple.0)
+                            );
                             candidate_last_token_seen_pos.0 += 1;
                             candidate_last_token_seen_pos.1 += candidate_token_tuple.1;
                         }
                     } else {
                         //the upper bound of the remaining matches is not enough to reach the threshold, so we can stop comparing this candidate
+                        /* info!("UPPER BOUND of remaining matches is {}, which is not enough to reach the threshold of {}. Stopping comparison for this candidate.", min(origin_word_count - origin_last_token_seen_pos.1, candidate_word_count - candidate_last_token_seen_pos.1), current_threshold);
+                        info!(
+                            "Current matches: {}, new matches: {}, total possible matches: {}",
+                            candidate_map.get_token_matches(&candidate_id),
+                            new_matches,
+                            candidate_map.get_token_matches(&candidate_id)
+                                + min(
+                                    origin_word_count - origin_last_token_seen_pos.1,
+                                    candidate_word_count - candidate_last_token_seen_pos.1
+                                )
+                        ); */
+                        info!("UPPER BOUND of remaining matches is {}, which is not enough to reach the threshold of {}. Stopping comparison for this candidate.", upper_bound, current_threshold);
+                        info!(
+                            "origin_last_token_seen_pos: {}, candidate_last_token_seen_pos: {}",
+                            origin_last_token_seen_pos.0, candidate_last_token_seen_pos.0
+                        );
                         break;
                     }
                 }
@@ -619,9 +664,11 @@ fn verify_candidates(
                         .or_default()
                         .insert(candidate_id);
                     info!(
-                        "Clone detected! Original: {}, Candidate: {}, Similarity: {:.2} %",
-                        origin_function_id,
-                        candidate_id,
+                        "Clone detected! Candidate: {}, Similarity: {:.2} %",
+                        function_paths_and_lengths
+                            .get(&candidate_id)
+                            .map(|(path, _)| *path)
+                            .unwrap_or("Unknown"),
                         (candidate_map.get_token_matches(&candidate_id) as f64
                             / max(origin_word_count, candidate_word_count) as f64)
                             * 100.0

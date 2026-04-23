@@ -160,7 +160,7 @@ impl CandidateMap {
         }
     }
 
-    pub fn verification_cost_estimate(&self, n: usize) -> usize {
+    pub fn verification_cost_estimate(&self, n: usize, origin_word_count: &usize) -> usize {
         let mut number_of_candidates = self.count_candidates_with_n_matches(n, "at_least"); //the candidates that have already reached n matches
 
         let mut survivors = 0usize;
@@ -183,6 +183,6 @@ impl CandidateMap {
         } else {
             (length_range.0 + length_range.1) / 2
         };
-        number_of_candidates * average_length
+        number_of_candidates * (*origin_word_count + average_length)
     }
 }

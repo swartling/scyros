@@ -2807,6 +2807,7 @@ dependencies = [
  "crossbeam-channel 0.5.15",
  "csv",
  "curl",
+ "either",
  "indicatif",
  "json",
  "lazy_static",

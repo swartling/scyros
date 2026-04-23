@@ -99,9 +99,9 @@ impl Bow {
     pub fn token_rankings(&self) -> HashMap<Vec<u8>, (usize, usize)> {
         let mut rankings: HashMap<Vec<u8>, (usize, usize)> = HashMap::new();
         let mut count_vec: Vec<(&Vec<u8>, &usize)> = self.map.iter().collect();
-        //count_vec.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count in descending order
+        //count_vec.sort_by(|a, b| a.1.cmp(b.1)); // Sort by count in ascending order
         count_vec.sort_by(|a, b| {
-            b.1.cmp(a.1) // primary: count descending
+            a.1.cmp(b.1) // primary: count ascending
                 .then_with(|| a.0.cmp(b.0)) // secondary: token ascending
         });
         for (rank, (token, count)) in count_vec.into_iter().enumerate() {

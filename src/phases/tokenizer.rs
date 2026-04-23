@@ -117,7 +117,7 @@ pub fn run(input_path: &str, example_word: &str, _logger: &Logger) -> Result<()>
         example_word
     );
     info!(
-        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words.",
+        "  The token '{}' appears {} times and is ranked {} in the global Bag of Words (rank 1 = least common token).",
         example_word,
         token_rankings
             .get(example_word_token)
